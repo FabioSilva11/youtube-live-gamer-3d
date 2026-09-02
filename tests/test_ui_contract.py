@@ -6,6 +6,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class PublicChatUiContractTests(unittest.TestCase):
+    def test_page_uses_the_live_gamer_desktop_icon(self):
+        html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
+
+        self.assertTrue((ROOT / "app" / "static" / "live-gamer-3d-icon.png").is_file())
+        self.assertIn('href="/static/live-gamer-3d-icon.png"', html)
+
     def test_chat_form_needs_only_a_public_live_url(self):
         html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
