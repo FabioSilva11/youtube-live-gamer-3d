@@ -71,13 +71,19 @@ class Participant:
 
 
 class ParticipantRegistry:
-    """Keeps no message text, avatar URLs, IPs, or permanent viewer records."""
+    """Keeps up to ten public authors on stage without retaining message text."""
 
-    def __init__(self, clock: Callable[[], float] = time.monotonic, ttl_seconds: float = 60.0) -> None:
+    def __init__(
+        self,
+        clock: Callable[[], float] = time.monotonic,
+        ttl_seconds: float | None = None,
+        max_participants: int = 10,
+    ) -> None:
         self._participants: dict[str, Participant] = {}
         self._sequence = 0
         self._clock = clock
         self._ttl_seconds = ttl_seconds
+        self._max_participants = max_participants
 
     @staticmethod
     def _role(author: dict[str, Any]) -> str:
@@ -106,6 +112,9 @@ class ParticipantRegistry:
             if profile_image_url:
                 existing.profile_image_url = profile_image_url
             return False
+        if len(self._participants) >= self._max_participants:
+            oldest_channel_id = min(self._participants, key=lambda item: self._participants[item].last_seen)
+            del self._participants[oldest_channel_id]
         self._sequence += 1
         self._participants[channel_id] = Participant(
             id=f"avatar-{self._sequence}",
@@ -134,6 +143,8 @@ class ParticipantRegistry:
         self._sequence = 0
 
     def expire_inactive(self) -> bool:
+        if self._ttl_seconds is None:
+            return False
         now = self._clock()
         expired = [
             channel_id
@@ -145,7 +156,7 @@ class ParticipantRegistry:
         return bool(expired)
 
     def seconds_until_expiry(self) -> float | None:
-        if not self._participants:
+        if self._ttl_seconds is None or not self._participants:
             return None
         now = self._clock()
         return max(0.0, min(participant.last_seen + self._ttl_seconds - now for participant in self._participants.values()))

@@ -43,18 +43,28 @@ class ParticipantRegistryTests(unittest.TestCase):
         self.assertEqual([person["display_name"] for person in registry.snapshot()], ["Player Dois"])
         self.assertFalse(registry.remove_demo("inexistente"))
 
-    def test_removes_an_inactive_author_after_one_minute(self):
+    def test_keeps_an_inactive_author_on_stage_until_the_stage_is_cleared(self):
         now = [100.0]
         registry = ParticipantRegistry(clock=lambda: now[0])
         registry.add_public_author("channel-1", "Ana", {})
 
-        now[0] = 159.9
+        now[0] = 3_700.0
         self.assertFalse(registry.expire_inactive())
-        self.assertEqual(len(registry.snapshot()), 1)
+        self.assertEqual([person["display_name"] for person in registry.snapshot()], ["Ana"])
 
-        now[0] = 160.0
-        self.assertTrue(registry.expire_inactive())
-        self.assertEqual(registry.snapshot(), [])
+    def test_replaces_only_the_oldest_author_when_the_eleventh_arrives(self):
+        now = [100.0]
+        registry = ParticipantRegistry(clock=lambda: now[0])
+        for number in range(1, 11):
+            registry.add_public_author(f"channel-{number}", f"Player {number}", {})
+            now[0] += 1
+
+        registry.add_public_author("channel-11", "Player 11", {})
+
+        self.assertEqual(
+            [person["display_name"] for person in registry.snapshot()],
+            ["Player 2", "Player 3", "Player 4", "Player 5", "Player 6", "Player 7", "Player 8", "Player 9", "Player 10", "Player 11"],
+        )
 
     def test_public_chat_status_reports_the_active_author_count(self):
         registry = ParticipantRegistry()

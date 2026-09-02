@@ -44,7 +44,7 @@ Abra [http://127.0.0.1:8000](http://127.0.0.1:8000). Sem configurar nada, use **
 1. Cole no painel o link público da live, por exemplo `https://www.youtube.com/live/mlKXjGTENNw`.
 2. Opcionalmente, defina `YOUTUBE_LIVE_URL` no `.env` para conectar esse chat na inicialização.
 3. Quando alguém escrever no chat público, o nome de exibição, a foto pública e o papel público (criador, moderador, membro ou participante) aparecerão no palco. A mensagem em si é descartada imediatamente.
-4. Um participante permanece por 1 minuto após sua última mensagem e então caminha para fora. Nenhuma foto ou participante expirado é mantido no cache do navegador.
+4. O palco mantém até 10 participantes que já escreveram no chat. Depois disso, cada novo autor substitui somente o autor há mais tempo sem interagir, usando a animação de saída escolhida no painel. Nenhum participante removido é mantido no cache do navegador.
 
 O leitor não acessa uma conta, não usa cookies e não consegue ler chat privado, bloqueado ou indisponível publicamente. Como a estrutura pública do YouTube pode mudar, o painel mostra um erro claro caso a leitura deixe de estar disponível.
 
