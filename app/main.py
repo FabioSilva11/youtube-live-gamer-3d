@@ -13,6 +13,7 @@ import os
 import queue
 import shutil
 import subprocess
+import sys
 import threading
 import time
 from contextlib import asynccontextmanager, suppress
@@ -29,12 +30,29 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 
-ROOT = Path(__file__).resolve().parents[1]
+def runtime_root(bundle_directory: str | None = None) -> Path:
+    return Path(bundle_directory) if bundle_directory else Path(__file__).resolve().parents[1]
+
+
+ROOT = runtime_root(getattr(sys, "_MEIPASS", None))
 STATIC_DIR = ROOT / "app" / "static"
 CHARACTERS_DIR = ROOT / "kenney_blocky-characters_20" / "Models" / "GLB format"
 load_dotenv(ROOT / ".env")
 
 TRUSTED_PROFILE_IMAGE_HOSTS = ("ggpht.com", "googleusercontent.com")
+
+
+def ffmpeg_executable() -> str | None:
+    bundled = ROOT / "ffmpeg.exe"
+    return str(bundled) if bundled.is_file() else shutil.which("ffmpeg")
+
+
+def server_port() -> int:
+    try:
+        port = int(os.getenv("LIVE_GAMER_PORT", "8000"))
+    except ValueError:
+        return 8000
+    return port if 1 <= port <= 65_535 else 8000
 
 
 def classify_ffmpeg_delivery_error(message: str) -> str:
@@ -465,7 +483,7 @@ class StreamController:
         _, stream_key = self.config()
         running = self.process is not None and self.process.poll() is None
         return {
-            "ffmpeg_available": shutil.which("ffmpeg") is not None,
+            "ffmpeg_available": ffmpeg_executable() is not None,
             "stream_configured": bool(stream_key),
             "stream_running": running,
             "stream_source": "threejs-canvas",
@@ -484,7 +502,7 @@ class StreamController:
     def start(self) -> None:
         if self.process is not None and self.process.poll() is None:
             return
-        ffmpeg = shutil.which("ffmpeg")
+        ffmpeg = ffmpeg_executable()
         endpoint, stream_key = self.config()
         if not ffmpeg:
             raise RuntimeError("FFmpeg não foi encontrado no PATH deste computador.")
@@ -764,3 +782,9 @@ async def live_updates(socket: WebSocket) -> None:
         pass
     finally:
         hub.disconnect(socket)
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(app, host="127.0.0.1", port=server_port())

@@ -1,7 +1,11 @@
 import unittest
+from tempfile import TemporaryDirectory
+from pathlib import Path
 from unittest.mock import patch
 
 from fastapi import HTTPException
+
+import app.main as live_main
 
 from app.main import (
     CanvasChunkBuffer,
@@ -17,6 +21,21 @@ from app.main import (
 
 
 class ParticipantRegistryTests(unittest.TestCase):
+    def test_runtime_root_uses_the_pyinstaller_bundle_directory_when_present(self):
+        self.assertEqual(live_main.runtime_root(r"C:\\LiveGamerBundle"), Path(r"C:\\LiveGamerBundle"))
+
+    def test_prefers_ffmpeg_packaged_next_to_the_executable(self):
+        with TemporaryDirectory() as directory:
+            bundle_root = Path(directory)
+            bundled_ffmpeg = bundle_root / "ffmpeg.exe"
+            bundled_ffmpeg.touch()
+            with patch.object(live_main, "ROOT", bundle_root):
+                self.assertEqual(live_main.ffmpeg_executable(), str(bundled_ffmpeg))
+
+    def test_uses_a_valid_environment_port_for_the_packaged_server(self):
+        with patch.dict("os.environ", {"LIVE_GAMER_PORT": "8011"}, clear=False):
+            self.assertEqual(live_main.server_port(), 8011)
+
     def test_only_one_avatar_for_repeat_public_author(self):
         registry = ParticipantRegistry()
         self.assertTrue(registry.add_public_author("channel-1", "Ana", {}))
