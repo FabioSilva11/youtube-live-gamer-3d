@@ -9,7 +9,15 @@ import {
   normaliseEntryMode,
   normaliseExitMode,
 } from '/static/animation.js';
-import { captureSessionIsActive, stopMediaTracks } from '/static/capture.js';
+import {
+  captureSessionIsActive,
+  createMusicCaptureRoute,
+  pauseMusicPlayback,
+  playMusicPlayback,
+  startMusicForLive,
+  stopMediaTracks,
+  stopMusicForLive,
+} from '/static/capture.js';
 import { avatarLayoutFor, latestVisualParticipants } from '/static/layout.js';
 import { inactiveProfileImageIds, topChatRanking } from '/static/ranking.js';
 import { disposeOwnedRenderObject } from '/static/resources.js';
@@ -45,6 +53,9 @@ const elements = {
   entryAnimation: document.querySelector('#entry-animation'), exitAnimation: document.querySelector('#exit-animation'),
   start: document.querySelector('#start-stream'), stop: document.querySelector('#stop-stream'),
   disconnect: document.querySelector('#disconnect-chat'), toast: document.querySelector('#toast'),
+  musicFile: document.querySelector('#music-file'), musicName: document.querySelector('#music-name'),
+  musicVolume: document.querySelector('#music-volume'), musicPlay: document.querySelector('#music-play'),
+  musicPause: document.querySelector('#music-pause'),
 };
 
 let toastTimer;
@@ -59,6 +70,10 @@ let captureStopPromise = null;
 let captureSessionGeneration = 0;
 let captureWidth = 0;
 let captureHeight = 0;
+let musicPlayer = null;
+let musicObjectUrl = null;
+let musicRoute = null;
+let musicVolume = Number(elements.musicVolume.value) / 100;
 let dashboardStatus = {};
 let lastPresentedStreamError = null;
 const arrivalQueue = new ArrivalQueue();
@@ -88,6 +103,7 @@ function updateStatus(incomingStatus) {
   elements.streamStatus.style.color = status.stream_error ? '#ff6f7d' : streaming ? '#63eed2' : '';
   elements.start.disabled = streaming || !status.ffmpeg_available || !status.stream_configured;
   elements.stop.disabled = !streaming;
+  elements.musicFile.disabled = streaming;
   if (status.stream_error) elements.streamNote.textContent = status.stream_error;
   else if (streaming) elements.streamNote.textContent = 'O canvas Three.js está sendo enviado ao YouTube em tempo real.';
   else if (!status.ffmpeg_available) elements.streamNote.textContent = 'Instale o FFmpeg e deixe-o disponível no PATH para transmitir.';
@@ -96,6 +112,36 @@ function updateStatus(incomingStatus) {
   if (status.stream_error && status.stream_error !== lastPresentedStreamError) toast(status.stream_error);
   lastPresentedStreamError = status.stream_error || null;
   if (status.chat_error) toast(status.chat_error);
+}
+
+function updateMusicControls() {
+  const hasMusic = Boolean(musicPlayer);
+  elements.musicPlay.disabled = !hasMusic;
+  elements.musicPause.disabled = !hasMusic;
+}
+
+async function ensureMusicRoute() {
+  if (!musicPlayer) return null;
+  if (!musicRoute) {
+    const context = new AudioContext();
+    musicPlayer.volume = 1;
+    musicRoute = createMusicCaptureRoute(context, musicPlayer, musicVolume);
+  }
+  musicRoute.gain.gain.value = musicVolume;
+  await musicRoute.context.resume();
+  return musicRoute;
+}
+
+async function releaseSelectedMusic() {
+  if (musicPlayer) stopMusicForLive(musicPlayer);
+  if (musicRoute) {
+    musicRoute.detachCaptureTrack();
+    if (musicRoute.context.state !== 'closed') await musicRoute.context.close();
+    musicRoute = null;
+  }
+  if (musicObjectUrl) URL.revokeObjectURL(musicObjectUrl);
+  musicObjectUrl = null;
+  musicPlayer = null;
 }
 
 // Three.js stage
@@ -746,11 +792,18 @@ function stopCanvasCapture({ closeSocket = true } = {}) {
     }
     canvasRecorder = null;
     if (closeSocket) closeOutputSocket();
-    stopMediaTracks(captureMediaStream);
+    if (captureAudio?.kind === 'music' && captureMediaStream) {
+      captureMediaStream.getVideoTracks().forEach((track) => track.stop());
+    } else {
+      stopMediaTracks(captureMediaStream);
+    }
     captureMediaStream = null;
     if (captureAudio) {
-      if (captureAudio.started) captureAudio.source.stop();
-      if (captureAudio.context.state !== 'closed') await captureAudio.context.close();
+      if (captureAudio.kind === 'music') stopMusicForLive(musicPlayer);
+      else {
+        if (captureAudio.started) captureAudio.source.stop();
+        if (captureAudio.context.state !== 'closed') await captureAudio.context.close();
+      }
       captureAudio = null;
     }
     if (captureRenderer) {
@@ -791,16 +844,25 @@ async function startCanvasCapture() {
     socket.addEventListener('close', () => reject(new Error('A conexão de envio foi encerrada durante a inicialização.')), { once: true });
   });
   assertCaptureSession(generation, socket);
-  const context = new AudioContext();
-  const destination = context.createMediaStreamDestination();
-  const source = context.createConstantSource();
-  const gain = context.createGain();
-  gain.gain.value = 0;
-  source.connect(gain).connect(destination);
-  captureAudio = { context, source, started: false };
-  source.start();
-  captureAudio.started = true;
-  await context.resume();
+  let audioTrack;
+  const route = await ensureMusicRoute();
+  if (route) {
+    captureAudio = { kind: 'music' };
+    await startMusicForLive(musicPlayer);
+    audioTrack = route.track;
+  } else {
+    const context = new AudioContext();
+    const destination = context.createMediaStreamDestination();
+    const source = context.createConstantSource();
+    const gain = context.createGain();
+    gain.gain.value = 0;
+    source.connect(gain).connect(destination);
+    captureAudio = { context, source, started: false };
+    source.start();
+    captureAudio.started = true;
+    await context.resume();
+    audioTrack = destination.stream.getAudioTracks()[0];
+  }
   assertCaptureSession(generation, socket);
   ({ width: captureWidth, height: captureHeight } = outputDimensions());
   captureRenderer = createRenderer();
@@ -814,7 +876,7 @@ async function startCanvasCapture() {
   configureHud(captureHudCamera, captureWidth, captureHeight);
   renderWorld(captureRenderer, captureCamera, captureHudCamera, captureWidth, captureHeight);
   const canvasStream = captureRenderer.domElement.captureStream(30);
-  captureMediaStream = new MediaStream([...canvasStream.getVideoTracks(), ...destination.stream.getAudioTracks()]);
+  captureMediaStream = new MediaStream([...canvasStream.getVideoTracks(), audioTrack]);
   const preferredType = 'video/webm;codecs=vp8,opus';
   const options = MediaRecorder.isTypeSupported(preferredType)
     ? { mimeType: preferredType, videoBitsPerSecond: 3_000_000 }
@@ -854,6 +916,35 @@ document.querySelector('#test-exit').addEventListener('click', async () => {
   } catch (error) { toast(error.message); }
 });
 document.querySelector('#clear-stage').addEventListener('click', async () => { await api('/api/participants/clear', { method: 'POST' }); updateParticipants([]); });
+elements.musicFile.addEventListener('change', async () => {
+  const [file] = elements.musicFile.files;
+  if (!file) return;
+  if (!['audio/mpeg', 'audio/wav', 'audio/ogg'].includes(file.type)) {
+    elements.musicFile.value = '';
+    return toast('Escolha uma faixa MP3, WAV ou OGG.');
+  }
+  await releaseSelectedMusic();
+  musicObjectUrl = URL.createObjectURL(file);
+  musicPlayer = new Audio(musicObjectUrl);
+  musicPlayer.loop = true;
+  musicPlayer.preload = 'auto';
+  musicPlayer.volume = musicVolume;
+  elements.musicName.textContent = file.name;
+  updateMusicControls();
+  toast('Faixa selecionada. Ela começará automaticamente ao iniciar a live.');
+});
+elements.musicVolume.addEventListener('input', () => {
+  musicVolume = Number(elements.musicVolume.value) / 100;
+  if (musicRoute) musicRoute.gain.gain.value = musicVolume;
+  else if (musicPlayer) musicPlayer.volume = musicVolume;
+});
+elements.musicPlay.addEventListener('click', async () => {
+  try {
+    await ensureMusicRoute();
+    await playMusicPlayback(musicPlayer);
+  } catch { toast('Não foi possível tocar esta faixa agora.'); }
+});
+elements.musicPause.addEventListener('click', () => { if (musicPlayer) pauseMusicPlayback(musicPlayer); });
 elements.start.addEventListener('click', async () => { try { updateStatus(await api('/api/stream/start', { method: 'POST' })); await startCanvasCapture(); toast('Canvas 3D enviado. Confira a prévia no YouTube Studio antes de publicar.'); } catch (error) { await stopCanvasCapture(); try { updateStatus(await api('/api/stream/stop', { method: 'POST' })); } catch {} toast(error.message); } });
 elements.stop.addEventListener('click', async () => { await stopCanvasCapture(); updateStatus(await api('/api/stream/stop', { method: 'POST' })); toast('Envio interrompido.'); });
 document.querySelector('#stream-form').addEventListener('submit', async (event) => { event.preventDefault(); const key = document.querySelector('#stream-key').value.trim(); if (!key) return toast('Informe a chave de transmissão.'); try { updateStatus(await api('/api/stream/configure', { method: 'POST', body: JSON.stringify({ stream_key: key }) })); toast('Chave salva somente nesta sessão local.'); } catch (error) { toast(error.message); } });
@@ -866,6 +957,6 @@ elements.exitAnimation.addEventListener('change', () => {
   localStorage.setItem('live-gamer-exit-animation', exitAnimationMode);
 });
 async function pollStreamStatus() { try { updateStatus(await api('/api/status')); } catch {} }
-async function initialise() { try { updateParticipants(await api('/api/participants')); updateStatus(await api('/api/status')); } catch { toast('Servidor indisponível. Recarregue a página após iniciá-lo.'); } }
+async function initialise() { try { updateMusicControls(); updateParticipants(await api('/api/participants')); updateStatus(await api('/api/status')); } catch { toast('Servidor indisponível. Recarregue a página após iniciá-lo.'); } }
 function connectSocket() { const protocol = location.protocol === 'https:' ? 'wss' : 'ws'; const socket = new WebSocket(`${protocol}://${location.host}/ws`); socket.addEventListener('message', (event) => { const message = JSON.parse(event.data); if (message.type === 'participants') updateParticipants(message.data); if (message.type === 'status') updateStatus(message.data); }); socket.addEventListener('close', () => setTimeout(connectSocket, 2500)); }
 initialise(); connectSocket(); setInterval(pollStreamStatus, 3000);

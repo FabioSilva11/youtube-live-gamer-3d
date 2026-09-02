@@ -83,11 +83,12 @@ class PublicChatUiContractTests(unittest.TestCase):
         self.assertIn("captureAudio = { context, source, started: false }", script)
         self.assertNotIn("captureCamera.copy(camera)", script)
 
-    def test_characters_walk_interact_and_advertise_one_minute_presence(self):
+    def test_characters_walk_interact_and_advertise_the_ten_person_stage_limit(self):
         html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
 
-        self.assertIn("1 minuto", html)
+        self.assertIn("10 participantes", html)
+        self.assertNotIn("por 1 minuto", html)
         self.assertIn("new THREE.AnimationMixer", script)
         self.assertIn("socialInteractionPhase", script)
         self.assertIn("avatarActivityAnimation", script)
@@ -96,6 +97,18 @@ class PublicChatUiContractTests(unittest.TestCase):
         self.assertNotIn("new THREE.Clock", script)
         self.assertIn("THREE.PCFShadowMap", script)
         self.assertNotIn("THREE.PCFSoftShadowMap", script)
+
+    def test_music_controls_select_a_local_track_for_live_audio(self):
+        html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn('id="music-file"', html)
+        self.assertIn('id="music-play"', html)
+        self.assertIn('id="music-pause"', html)
+        self.assertIn('id="music-volume"', html)
+        self.assertIn('accept="audio/mpeg,audio/wav,audio/ogg"', html)
+        self.assertIn("startMusicForLive", script)
+        self.assertIn("createMusicCaptureRoute", script)
 
     def test_preview_renders_the_world_across_the_whole_stage(self):
         styles = (ROOT / "app" / "static" / "styles.css").read_text(encoding="utf-8")

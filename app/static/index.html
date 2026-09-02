@@ -28,7 +28,7 @@
         <header>
           <p class="eyebrow">PAINEL DA TRANSMISSÃO</p>
           <h1>Sua live, em <em>3D.</em></h1>
-          <p class="intro">Os 18 autores mais recentes ganham um avatar animado, exploram o mapa e interagem no palco por 1 minuto.</p>
+          <p class="intro">Até 10 participantes do chat ganham um avatar animado, exploram o mapa e interagem no palco. Novas entradas substituem uma pessoa por vez.</p>
         </header>
 
         <section class="card stream-card">
@@ -43,6 +43,22 @@
             <button id="start-stream" class="button primary">Iniciar transmissão</button>
             <button id="stop-stream" class="button ghost" disabled>Parar</button>
           </div>
+        </section>
+
+        <section class="card music-card">
+          <div class="card-title"><span>Música da live</span><strong>LOCAL</strong></div>
+          <p id="music-name" class="small">Nenhuma faixa selecionada.</p>
+          <label>Selecionar faixa
+            <input id="music-file" type="file" accept="audio/mpeg,audio/wav,audio/ogg" />
+          </label>
+          <label>Volume
+            <input id="music-volume" type="range" min="0" max="100" value="35" />
+          </label>
+          <div class="button-row">
+            <button id="music-play" class="button secondary" type="button" disabled>Tocar</button>
+            <button id="music-pause" class="button ghost" type="button" disabled>Pausar</button>
+          </div>
+          <p class="privacy">A faixa toca em loop ao iniciar a transmissão. Use somente música que você tem autorização para transmitir.</p>
         </section>
 
         <section class="card">
@@ -66,7 +82,7 @@
               <button id="test-exit" class="button ghost" type="button">Testar saída</button>
             </div>
           </form>
-          <p class="privacy">O painel não rastreia espectadores silenciosos, IPs ou mensagens. Cada autor público permanece por 1 minuto após sua última mensagem.</p>
+          <p class="privacy">O painel não rastreia espectadores silenciosos, IPs ou mensagens. Até 10 autores públicos permanecem no palco; uma nova entrada substitui somente o mais antigo.</p>
         </section>
 
         <section class="card animation-card">
