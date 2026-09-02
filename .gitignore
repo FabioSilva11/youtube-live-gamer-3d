@@ -5,6 +5,7 @@ __pycache__/
 .pytest_cache/
 .playwright-cli/
 output/
+.worktrees/
 *.log
 Thumbs.db
 .DS_Store
