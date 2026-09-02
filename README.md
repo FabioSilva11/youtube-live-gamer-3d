@@ -25,6 +25,18 @@ Painel local em **Python/FastAPI + Three.js** para uma live no YouTube: cada pes
 - FFmpeg instalado e disponível no `PATH` para transmitir ao YouTube.
 - Navegador com WebGL, `canvas.captureStream()` e `MediaRecorder`.
 
+## Aplicativo Windows
+
+Use [LiveGamer3D.exe](output/LiveGamer3D.exe) para abrir o painel como um programa: uma janela própria exibe a interface Three.js, sem terminal e sem precisar abrir o navegador manualmente. Ao fechar a janela, o serviço local também é encerrado.
+
+O aplicativo usa o Microsoft Edge WebView2 instalado no Windows. Se a janela não abrir em um computador, instale o [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/).
+
+Para gerar o EXE a partir do código, instale as dependências e execute:
+
+```powershell
+.\scripts\build_windows.ps1
+```
+
 ## Rodar localmente
 
 No PowerShell, dentro desta pasta:
@@ -70,7 +82,7 @@ Os campos permanecem preenchidos depois de enviar os formulários, para facilita
 ## Verificação
 
 ```powershell
-python -m pytest -q
+python -m unittest discover -s tests -p "test_*.py"
 node --test tests/*.test.mjs
 python -m compileall -q app
 ```
