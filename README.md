@@ -8,8 +8,9 @@ Painel local em **Python/FastAPI + Three.js** para uma live no YouTube: cada pes
 
 ## O que está pronto
 
-- Palco Three.js responsivo em um mundo de primavera com relevo suave, lago, caminho, pedras, arbustos, flores e árvores amareladas. Ele usa 18 modelos 3D CC0 do pacote Kenney já presente neste computador e mantém um avatar geométrico de reserva.
+- Palco Three.js responsivo em um mundo de primavera com relevo suave, lago animado, nuvens, caminho, pedras, arbustos, flores coloridas e árvores amareladas. Ele usa 18 modelos 3D CC0 do pacote Kenney já presente neste computador e mantém um avatar geométrico de reserva.
 - Atualização em tempo real por WebSocket; um autor tem um só avatar, mesmo mandando várias mensagens.
+- Caminhada esquelética real dos GLBs, animação de repouso e interações em pares: os personagens se aproximam, preservam espaço pessoal, se encaram e alternam gestos sociais.
 - Entrada configurável entre apresentação individual e chegada direta; saída configurável entre caminhada e desaparecimento imediato.
 - Ranking dos cinco autores mais ativos dentro do próprio canvas transmitido, com a foto pública do perfil quando disponível e a inicial como reserva.
 - Leitura local do chat público a partir do link da live, sem chave de API, cookies ou login. O leitor usa a continuação pública do próprio chat e respeita o intervalo indicado pelo YouTube.
@@ -43,7 +44,7 @@ Abra [http://127.0.0.1:8000](http://127.0.0.1:8000). Sem configurar nada, use **
 1. Cole no painel o link público da live, por exemplo `https://www.youtube.com/live/mlKXjGTENNw`.
 2. Opcionalmente, defina `YOUTUBE_LIVE_URL` no `.env` para conectar esse chat na inicialização.
 3. Quando alguém escrever no chat público, o nome de exibição, a foto pública e o papel público (criador, moderador, membro ou participante) aparecerão no palco. A mensagem em si é descartada imediatamente.
-4. Um participante inativo sai automaticamente depois de 60 segundos. Nenhuma foto ou participante expirado é mantido no cache do navegador.
+4. Um participante permanece por 1 minuto após sua última mensagem e então caminha para fora. Nenhuma foto ou participante expirado é mantido no cache do navegador.
 
 O leitor não acessa uma conta, não usa cookies e não consegue ler chat privado, bloqueado ou indisponível publicamente. Como a estrutura pública do YouTube pode mudar, o painel mostra um erro claro caso a leitura deixe de estar disponível.
 

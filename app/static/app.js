@@ -8,6 +8,12 @@ import { inactiveProfileImageIds, topChatRanking } from '/static/ranking.js';
 import { mergeDashboardStatus } from '/static/status.js';
 import { terrainHeightAt } from '/static/terrain.js';
 import { normaliseOutputFormat, outputCameraPreset, outputDimensions } from '/static/output.js';
+import {
+  avatarActivityAnimation,
+  socialInteractionPhase,
+  socialMeetingTarget,
+  socialPartnerIndex,
+} from '/static/social.js';
 
 const api = async (path, options = {}) => {
   const response = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...options });
@@ -78,11 +84,14 @@ const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setPixelRatio(1);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.18;
 renderer.autoClear = false;
 elements.scene.append(renderer.domElement);
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x92d9f2);
-scene.fog = new THREE.Fog(0x92d9f2, 14, 35);
+scene.background = new THREE.Color(0x78cdf4);
+scene.fog = new THREE.Fog(0x8bd7ee, 14, 35);
 const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
 const hudScene = new THREE.Scene();
 const hudCamera = new THREE.OrthographicCamera(0, 1, 1, 0, -1, 1);
@@ -111,10 +120,26 @@ function applyOutputCameraPreset() {
   controls.update();
 }
 applyOutputCameraPreset();
-scene.add(new THREE.HemisphereLight(0xbfeafa, 0x427b35, 2.5));
-const sunlight = new THREE.DirectionalLight(0xffe3a0, 3.8);
-sunlight.position.set(-7, 12, 6); sunlight.castShadow = true; sunlight.shadow.mapSize.set(1024, 1024); scene.add(sunlight);
-const warmFill = new THREE.PointLight(0xffce64, 10, 22); warmFill.position.set(-8, 8, -10); scene.add(warmFill);
+const skyDome = new THREE.Mesh(
+  new THREE.SphereGeometry(78, 32, 20),
+  new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    depthWrite: false,
+    uniforms: {
+      horizonColor: { value: new THREE.Color(0xc8f4ff) },
+      zenithColor: { value: new THREE.Color(0x329df1) },
+    },
+    vertexShader: 'varying vec3 vDirection; void main(){ vDirection = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: 'uniform vec3 horizonColor; uniform vec3 zenithColor; varying vec3 vDirection; void main(){ float blend = smoothstep(-0.08, 0.72, vDirection.y); gl_FragColor = vec4(mix(horizonColor, zenithColor, blend), 1.0); }',
+  }),
+);
+scene.add(skyDome);
+scene.add(new THREE.HemisphereLight(0xd8f5ff, 0x326328, 1.85));
+const sunlight = new THREE.DirectionalLight(0xffe4a3, 3.25);
+sunlight.position.set(-8, 14, 7); sunlight.castShadow = true; sunlight.shadow.mapSize.set(2048, 2048);
+sunlight.shadow.camera.left = -11; sunlight.shadow.camera.right = 11; sunlight.shadow.camera.top = 11; sunlight.shadow.camera.bottom = -11;
+sunlight.shadow.bias = -.0005; sunlight.shadow.normalBias = .025; scene.add(sunlight);
+const warmFill = new THREE.PointLight(0xffb84d, 6.5, 24); warmFill.position.set(-8, 8, -10); scene.add(warmFill);
 
 const meadowBase = new THREE.Mesh(
   new THREE.CylinderGeometry(8.25, 8.65, .48, 80),
@@ -124,23 +149,37 @@ meadowBase.position.y = -.47; meadowBase.receiveShadow = true; scene.add(meadowB
 
 const meadowGeometry = new THREE.CircleGeometry(8.25, 96);
 const meadowPositions = meadowGeometry.getAttribute('position');
+const meadowColors = [];
+const meadowColor = new THREE.Color();
 for (let index = 0; index < meadowPositions.count; index += 1) {
   const x = meadowPositions.getX(index);
   const z = -meadowPositions.getY(index);
-  meadowPositions.setZ(index, terrainHeightAt(x, z));
+  const height = terrainHeightAt(x, z);
+  meadowPositions.setZ(index, height);
+  meadowColor.setHSL(.285 + Math.sin(x * .8 + z) * .012, .68, .43 + height * .14);
+  meadowColors.push(meadowColor.r, meadowColor.g, meadowColor.b);
 }
+meadowGeometry.setAttribute('color', new THREE.Float32BufferAttribute(meadowColors, 3));
 meadowGeometry.computeVertexNormals();
 const springMeadow = new THREE.Mesh(
   meadowGeometry,
-  new THREE.MeshStandardMaterial({ color: 0x68b94c, roughness: .96, metalness: 0, side: THREE.DoubleSide })
+  new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: .9, metalness: 0, side: THREE.DoubleSide })
 );
 springMeadow.rotation.x = -Math.PI / 2; springMeadow.receiveShadow = true; scene.add(springMeadow);
 
 const springLake = new THREE.Mesh(
   new THREE.CircleGeometry(1.3, 48),
-  new THREE.MeshPhysicalMaterial({ color: 0x61c9dc, roughness: .22, metalness: .05, transmission: .15, transparent: true, opacity: .88 })
+  new THREE.MeshPhysicalMaterial({ color: 0x32bfe8, roughness: .12, metalness: .05, transmission: .22, clearcoat: 1, clearcoatRoughness: .08, transparent: true, opacity: .9 })
 );
-springLake.rotation.x = -Math.PI / 2; springLake.scale.set(1.35, .72, 1); springLake.position.set(-3.8, -.2, -1.4); scene.add(springLake);
+springLake.rotation.x = -Math.PI / 2; springLake.scale.set(1.35, .72, 1); springLake.position.set(-3.8, -.2, -1.4); springLake.receiveShadow = true; scene.add(springLake);
+const lakeRipples = Array.from({ length: 3 }, (_, index) => {
+  const ripple = new THREE.Mesh(
+    new THREE.TorusGeometry(.34 + index * .25, .012, 6, 48),
+    new THREE.MeshBasicMaterial({ color: 0xc9f8ff, transparent: true, opacity: .5 - index * .1, depthWrite: false }),
+  );
+  ripple.rotation.x = Math.PI / 2; ripple.position.set(-3.8, -.175 + index * .002, -1.4); ripple.scale.y = .58; scene.add(ripple);
+  return ripple;
+});
 
 const pathMaterial = new THREE.MeshStandardMaterial({ color: 0xd6c58b, roughness: 1 });
 for (let index = 0; index < 15; index += 1) {
@@ -152,10 +191,11 @@ for (let index = 0; index < 15; index += 1) {
 
 const grassBlades = new THREE.InstancedMesh(
   new THREE.ConeGeometry(.035, .32, 4),
-  new THREE.MeshStandardMaterial({ color: 0x3d8c35, roughness: 1 }),
+  new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: .92 }),
   420
 );
 const grassTransform = new THREE.Object3D();
+const grassColor = new THREE.Color();
 for (let index = 0; index < 420; index += 1) {
   const angle = index * 2.3999632297;
   const radius = 1.1 + Math.sqrt((index + .5) / 420) * 6.7;
@@ -165,15 +205,17 @@ for (let index = 0; index < 420; index += 1) {
   grassTransform.scale.setScalar(.7 + (index % 7) * .07);
   grassTransform.updateMatrix();
   grassBlades.setMatrixAt(index, grassTransform.matrix);
+  grassColor.setHSL(.28 + (index % 11) * .003, .7, .31 + (index % 5) * .018);
+  grassBlades.setColorAt(index, grassColor);
 }
-grassBlades.instanceMatrix.needsUpdate = true; scene.add(grassBlades);
+grassBlades.instanceMatrix.needsUpdate = true; grassBlades.instanceColor.needsUpdate = true; grassBlades.receiveShadow = true; scene.add(grassBlades);
 
-function yellowFlower(x, z, scale = 1) {
+function yellowFlower(x, z, scale = 1, color = 0xffd65a) {
   const flower = new THREE.Group();
   const stem = new THREE.Mesh(new THREE.CylinderGeometry(.018, .026, .45 * scale, 5), new THREE.MeshStandardMaterial({ color: 0x3a8b3b, roughness: 1 }));
   stem.position.y = .2 * scale; flower.add(stem);
   const petalGeometry = new THREE.SphereGeometry(.12 * scale, 10, 8);
-  const petalMaterial = new THREE.MeshStandardMaterial({ color: 0xffd65a, roughness: .72 });
+  const petalMaterial = new THREE.MeshStandardMaterial({ color, roughness: .62 });
   for (let petalIndex = 0; petalIndex < 5; petalIndex += 1) {
     const petal = new THREE.Mesh(petalGeometry, petalMaterial);
     const angle = petalIndex * Math.PI * 2 / 5;
@@ -187,15 +229,17 @@ function yellowFlower(x, z, scale = 1) {
 for (let index = 0; index < 28; index += 1) {
   const angle = index * 1.71;
   const radius = 1.9 + (index % 7) * .68;
-  yellowFlower(Math.cos(angle) * radius, Math.sin(angle) * radius, .65 + (index % 4) * .08);
+  const flowerPalette = [0xffdf45, 0xff8f52, 0xff6fae, 0xa987ff];
+  yellowFlower(Math.cos(angle) * radius, Math.sin(angle) * radius, .65 + (index % 4) * .08, flowerPalette[index % flowerPalette.length]);
 }
 
 function goldenTree(x, z, scale = 1) {
   const tree = new THREE.Group();
   const trunk = new THREE.Mesh(new THREE.CylinderGeometry(.18 * scale, .25 * scale, 2.1 * scale, 7), new THREE.MeshStandardMaterial({ color: 0x805027, roughness: 1 }));
   trunk.position.y = 1.05 * scale; trunk.castShadow = true; tree.add(trunk);
-  const leaves = new THREE.MeshStandardMaterial({ color: 0xe2b94f, roughness: .82, flatShading: true });
-  [[0, 2.35, 0, 1.15], [.55, 2.05, .08, .82], [-.5, 2.1, .12, .88]].forEach(([leafX, leafY, leafZ, leafScale]) => {
+  const leafColors = [0xffc94a, 0xf6a83c, 0xffdb63];
+  [[0, 2.35, 0, 1.15], [.55, 2.05, .08, .82], [-.5, 2.1, .12, .88]].forEach(([leafX, leafY, leafZ, leafScale], crownIndex) => {
+    const leaves = new THREE.MeshStandardMaterial({ color: leafColors[crownIndex], roughness: .72, flatShading: true });
     const crown = new THREE.Mesh(new THREE.DodecahedronGeometry(leafScale * scale, 0), leaves);
     crown.position.set(leafX * scale, leafY * scale, leafZ * scale); crown.castShadow = true; tree.add(crown);
   });
@@ -226,8 +270,21 @@ springShrub(-2.3, 4.7, 1.1); springShrub(4.8, 4.6, .92); springShrub(5.6, -.9, .
 
 const springSun = new THREE.Mesh(new THREE.SphereGeometry(1.05, 24, 16), new THREE.MeshBasicMaterial({ color: 0xffdf75 }));
 springSun.position.set(-6.8, 7.2, -5.8); springSun.scale.setScalar(.58); scene.add(springSun);
+const sunGlow = new THREE.PointLight(0xffd269, 5, 18); sunGlow.position.copy(springSun.position); scene.add(sunGlow);
+const clouds = [];
+function springCloud(x, y, z, scale = 1) {
+  const cloud = new THREE.Group();
+  const material = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, transparent: true, opacity: .78, depthWrite: false });
+  [[0, 0, 0, .62], [.55, .06, .02, .46], [-.52, .02, .04, .42], [.15, .25, 0, .45]].forEach(([px, py, pz, size]) => {
+    const puff = new THREE.Mesh(new THREE.SphereGeometry(size * scale, 12, 8), material);
+    puff.position.set(px * scale, py * scale, pz * scale); cloud.add(puff);
+  });
+  cloud.position.set(x, y, z); scene.add(cloud); clouds.push(cloud);
+}
+springCloud(-9, 7.8, -10, 1.05); springCloud(5.5, 9.1, -14, .78); springCloud(11, 6.5, -8, .62);
 const avatarRoot = new THREE.Group(); scene.add(avatarRoot);
 const avatars = new Map();
+let socialAvatarIds = [];
 const characterFiles = Array.from({ length: 18 }, (_, index) => `character-${String.fromCharCode(97 + index)}.glb`);
 const characterTemplates = new Map();
 const characterLoads = new Map();
@@ -264,9 +321,30 @@ function fitAvatarBody(body) {
   return body;
 }
 
-function replaceAvatarBody(group, body) {
+function setAvatarAnimation(group, name) {
+  if (!group.userData.mixer || group.userData.activeAnimation === name) return;
+  const clip = group.userData.animationClips.get(name) || group.userData.animationClips.get('idle');
+  if (!clip) return;
+  const nextAction = group.userData.mixer.clipAction(clip);
+  nextAction.enabled = true;
+  nextAction.reset();
+  nextAction.setEffectiveTimeScale(name === 'walk' ? 1.12 : .92);
+  nextAction.setEffectiveWeight(1);
+  nextAction.fadeIn(.2).play();
+  if (group.userData.activeAction && group.userData.activeAction !== nextAction) group.userData.activeAction.fadeOut(.2);
+  group.userData.activeAction = nextAction;
+  group.userData.activeAnimation = name;
+}
+
+function replaceAvatarBody(group, body, animations = []) {
+  if (group.userData.mixer) group.userData.mixer.stopAllAction();
   if (group.userData.body) group.remove(group.userData.body);
   group.userData.body = fitAvatarBody(body); group.add(group.userData.body);
+  group.userData.animationClips = new Map(animations.map((clip) => [clip.name, clip]));
+  group.userData.mixer = animations.length ? new THREE.AnimationMixer(group.userData.body) : null;
+  group.userData.activeAction = null;
+  group.userData.activeAnimation = null;
+  setAvatarAnimation(group, 'idle');
 }
 
 function loadCharacterTemplate(file) {
@@ -274,8 +352,9 @@ function loadCharacterTemplate(file) {
   if (!characterLoads.has(file)) {
     characterLoads.set(file, characterLoader.loadAsync(`/assets/characters/${file}`).then((gltf) => {
       gltf.scene.traverse((node) => { if (node.isMesh) { node.castShadow = true; node.receiveShadow = true; } });
-      characterTemplates.set(file, gltf.scene);
-      return gltf.scene;
+      const template = { scene: gltf.scene, animations: gltf.animations };
+      characterTemplates.set(file, template);
+      return template;
     }).catch(() => null));
   }
   return characterLoads.get(file);
@@ -290,22 +369,36 @@ function createAvatar(person) {
     target: new THREE.Vector3(),
     layoutTarget: new THREE.Vector3(),
     body: null,
+    mixer: null,
+    animationClips: new Map(),
+    activeAction: null,
+    activeAnimation: null,
+    socialPhase: 'rest',
+    socialIndex: 0,
+    socialPartner: null,
     phase: entryAnimationMode === 'spotlight' ? 'queued' : 'active',
     phaseStartedAt: 0,
   };
   replaceAvatarBody(group, fallbackBody()); group.add(makeLabel(person.display_name, person.role));
+  const interactionSpark = new THREE.Mesh(
+    new THREE.IcosahedronGeometry(.12, 0),
+    new THREE.MeshBasicMaterial({ color: 0xff69b4, transparent: true, opacity: .95 }),
+  );
+  interactionSpark.position.set(.48, 2.15, 0); interactionSpark.visible = false; group.add(interactionSpark);
+  group.userData.interactionSpark = interactionSpark;
   avatarRoot.add(group); avatars.set(person.id, group);
   if (entryAnimationMode === 'spotlight') {
     group.visible = false;
     arrivalQueue.enqueue(person.id);
   }
   loadCharacterTemplate(characterFile).then((template) => {
-    if (template && avatars.get(person.id) === group) replaceAvatarBody(group, cloneSkinned(template));
+    if (template && avatars.get(person.id) === group) replaceAvatarBody(group, cloneSkinned(template.scene), template.animations);
   });
 }
 
 function removeAvatar(id, avatar) {
   arrivalQueue.remove(id);
+  avatar.userData.mixer?.stopAllAction();
   avatarRoot.remove(avatar);
   avatars.delete(id);
   const label = avatar.children.find((child) => child.isSprite);
@@ -404,6 +497,7 @@ function updateParticipants(people) {
   visiblePeople.forEach((person, index) => {
     if (!avatars.has(person.id)) createAvatar(person);
     const avatar = avatars.get(person.id); const layout = avatarLayoutFor(index, visiblePeople.length);
+    avatar.userData.socialIndex = index;
     avatar.userData.layoutTarget.set(layout.x, terrainHeightAt(layout.x, layout.z), layout.z); avatar.scale.setScalar(layout.scale);
     if (avatar.userData.phase === 'exiting') avatar.userData.phase = 'active';
     if (avatar.userData.phase === 'active') avatar.userData.target.copy(avatar.userData.layoutTarget);
@@ -413,7 +507,26 @@ function updateParticipants(people) {
       const next = makeLabel(person.display_name, person.role); next.userData.name = `${person.display_name}:${person.role}`; avatar.add(next);
     }
   });
+  socialAvatarIds = visiblePeople.map((person) => person.id);
   elements.count.textContent = `${people.length} participante${people.length === 1 ? '' : 's'}`;
+}
+
+function updateSocialTargets(now) {
+  socialAvatarIds.forEach((id, index) => {
+    const avatar = avatars.get(id);
+    if (!avatar || avatar.userData.phase !== 'active') return;
+    const partnerIndex = socialPartnerIndex(index, socialAvatarIds.length);
+    const partner = partnerIndex === null ? null : avatars.get(socialAvatarIds[partnerIndex]);
+    const socialPhase = socialInteractionPhase(now - sceneStartedAt, Boolean(partner), Math.floor(index / 2));
+    avatar.userData.socialPhase = socialPhase;
+    avatar.userData.socialPartner = partner || null;
+    if (partner && (socialPhase === 'approach' || socialPhase === 'interact')) {
+      const meeting = socialMeetingTarget(avatar.userData.layoutTarget, partner.userData.layoutTarget);
+      avatar.userData.target.set(meeting.x, terrainHeightAt(meeting.x, meeting.z), meeting.z);
+    } else {
+      avatar.userData.target.copy(avatar.userData.layoutTarget);
+    }
+  });
 }
 
 function updateArrivalAnimation(now) {
@@ -454,20 +567,60 @@ function resize() {
 }
 new ResizeObserver(resize).observe(elements.scene); resize();
 const sceneStartedAt = performance.now();
-function render() {
+const animationTimer = new THREE.Timer();
+animationTimer.connect(document);
+function render(timestamp) {
   const now = performance.now(); const t = (now - sceneStartedAt) / 1000;
+  animationTimer.update(timestamp);
+  const deltaSeconds = Math.min(animationTimer.getDelta(), .05);
   updateArrivalAnimation(now);
+  updateSocialTargets(now);
+  clouds.forEach((cloud, index) => {
+    cloud.position.x += deltaSeconds * (.09 + index * .025);
+    if (cloud.position.x > 14) cloud.position.x = -14;
+  });
+  lakeRipples.forEach((ripple, index) => {
+    const pulse = 1 + Math.sin(t * .75 + index * 1.9) * .1;
+    ripple.scale.set(pulse, .58 * pulse, 1);
+    ripple.material.opacity = .28 + (Math.sin(t * .75 + index * 1.9) + 1) * .09;
+  });
   for (const [id, avatar] of avatars) {
-    avatar.position.lerp(avatar.userData.target, avatar.userData.phase === 'spotlight' ? .075 : .06);
-    avatar.position.y = terrainHeightAt(avatar.position.x, avatar.position.z) + Math.sin(t * 2 + avatar.userData.bob) * .055;
-    avatar.lookAt(camera.position.x, avatar.position.y, camera.position.z);
-    if (avatar.userData.phase === 'exiting' && now - avatar.userData.phaseStartedAt >= 1_250) removeAvatar(id, avatar);
+    const deltaX = avatar.userData.target.x - avatar.position.x;
+    const deltaZ = avatar.userData.target.z - avatar.position.z;
+    const distance = Math.hypot(deltaX, deltaZ);
+    const moving = distance > .035;
+    if (moving) {
+      const speed = avatar.userData.phase === 'exiting' ? 3.25 : avatar.userData.phase === 'spotlight' ? 2.75 : 1.6;
+      const step = Math.min(distance, speed * deltaSeconds);
+      avatar.position.x += deltaX / distance * step;
+      avatar.position.z += deltaZ / distance * step;
+      avatar.lookAt(avatar.userData.target.x, avatar.position.y, avatar.userData.target.z);
+    } else if (avatar.userData.socialPhase === 'interact' && avatar.userData.socialPartner) {
+      const partnerPosition = avatar.userData.socialPartner.position;
+      avatar.lookAt(partnerPosition.x, avatar.position.y, partnerPosition.z);
+    }
+    const fallbackBob = avatar.userData.mixer ? 0 : Math.sin(t * 2 + avatar.userData.bob) * .035;
+    avatar.position.y = terrainHeightAt(avatar.position.x, avatar.position.z) + fallbackBob;
+    const desiredAnimation = avatarActivityAnimation({
+      moving,
+      socialPhase: avatar.userData.socialPhase,
+      index: avatar.userData.socialIndex,
+    });
+    setAvatarAnimation(avatar, desiredAnimation);
+    avatar.userData.mixer?.update(deltaSeconds);
+    if (avatar.userData.interactionSpark) {
+      const interacting = !moving && avatar.userData.socialPhase === 'interact';
+      avatar.userData.interactionSpark.visible = interacting;
+      avatar.userData.interactionSpark.rotation.y += deltaSeconds * 2.6;
+      avatar.userData.interactionSpark.position.y = 2.15 + Math.sin(t * 3 + avatar.userData.socialIndex) * .08;
+    }
+    if (avatar.userData.phase === 'exiting' && (distance < .08 || now - avatar.userData.phaseStartedAt >= 4_000)) removeAvatar(id, avatar);
   }
   controls.update();
   renderer.clear(); renderer.render(scene, camera); renderer.clearDepth(); renderer.render(hudScene, hudCamera);
   requestAnimationFrame(render);
 }
-render();
+requestAnimationFrame(render);
 
 function closeOutputSocket() {
   if (outputSocket && outputSocket.readyState < WebSocket.CLOSING) outputSocket.close();

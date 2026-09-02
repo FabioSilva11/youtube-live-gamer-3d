@@ -71,6 +71,20 @@ class PublicChatUiContractTests(unittest.TestCase):
 
         self.assertIn("await stopCanvasCapture();", script[capture_start:socket_start])
 
+    def test_characters_walk_interact_and_advertise_one_minute_presence(self):
+        html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn("1 minuto", html)
+        self.assertIn("new THREE.AnimationMixer", script)
+        self.assertIn("socialInteractionPhase", script)
+        self.assertIn("avatarActivityAnimation", script)
+        self.assertIn("THREE.ACESFilmicToneMapping", script)
+        self.assertIn("new THREE.Timer", script)
+        self.assertNotIn("new THREE.Clock", script)
+        self.assertIn("THREE.PCFShadowMap", script)
+        self.assertNotIn("THREE.PCFSoftShadowMap", script)
+
 
 if __name__ == "__main__":
     unittest.main()
