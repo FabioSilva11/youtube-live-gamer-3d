@@ -1,0 +1,18 @@
+.env
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.playwright-cli/
+output/
+*.log
+Thumbs.db
+.DS_Store
+
+# O aplicativo usa somente os modelos GLB. Os formatos-fonte permanecem locais.
+kenney_blocky-characters_20/Models/FBX format/
+kenney_blocky-characters_20/Models/OBJ format/
+kenney_blocky-characters_20/Previews/
+kenney_blocky-characters_20/Overview.html
+kenney_blocky-characters_20/Preview.png
+kenney_blocky-characters_20/*.url

@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#68b95a" />
+    <title>Live Gamer 3D</title>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="stage" aria-label="Palco 3D da live">
+        <div class="brand"><span class="brand-dot"></span>LIVE GAMER <b>3D</b></div>
+        <div id="scene" class="scene" aria-label="Avatares dos participantes do chat"></div>
+        <div class="scene-hud">
+          <span id="online-dot" class="status-dot"></span>
+          <span id="online-copy">Aguardando chat</span>
+        </div>
+        <aside class="ranking" aria-label="Ranking do chat ao vivo">
+          <div class="ranking-header"><span>RANKING DO CHAT</span><strong id="ranking-total">0 autores</strong></div>
+          <ol id="ranking-list" class="ranking-list"></ol>
+        </aside>
+        <p class="scene-tip">Arraste para girar • role para aproximar</p>
+      </section>
+
+      <aside class="panel">
+        <header>
+          <p class="eyebrow">PAINEL DA TRANSMISSÃO</p>
+          <h1>Sua live, em <em>3D.</em></h1>
+          <p class="intro">Os 18 autores mais recentes ganham um avatar com o nome público no palco.</p>
+        </header>
+
+        <section class="card stream-card">
+          <div class="card-title"><span>Transmissão</span><strong id="stream-status">PRONTA</strong></div>
+          <p id="stream-note">A própria cena 3D será enviada para o YouTube em tempo real.</p>
+          <form id="stream-form" class="stream-form">
+            <label>Chave de transmissão <input id="stream-key" type="password" autocomplete="off" placeholder="Cole a chave do YouTube Studio" /></label>
+            <label>Formato da tela
+              <select id="output-format">
+                <option value="desktop">PC — 16:9 (1280 × 720)</option>
+                <option value="mobile">Celular — 9:16 (720 × 1280)</option>
+              </select>
+            </label>
+            <button class="button secondary" type="submit">Salvar configuração local</button>
+          </form>
+          <p class="output-help">Escolha o formato antes de iniciar. A resolução selecionada é a imagem enviada ao YouTube.</p>
+          <div class="button-row">
+            <button id="start-stream" class="button primary">Iniciar transmissão</button>
+            <button id="stop-stream" class="button ghost" disabled>Parar</button>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-title"><span>Chat do YouTube</span><strong id="chat-status">OFFLINE</strong></div>
+          <p class="small">Cole o link público da live. A leitura local usa somente autores visíveis no chat e descarta o texto das mensagens.</p>
+          <form id="youtube-form">
+            <label>Link público da live <input id="chat-source" name="source" autocomplete="off" placeholder="youtube.com/live/mlKXjGTENNw" /></label>
+            <div class="button-row">
+              <button class="button primary" type="submit">Conectar chat</button>
+              <button id="disconnect-chat" class="button ghost" type="button" disabled>Desconectar</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="card demo-card">
+          <div class="card-title"><span>Teste visual</span><strong>DEMO</strong></div>
+          <form id="demo-form" class="demo-form">
+            <input id="demo-name" maxlength="32" placeholder="Nome do participante" aria-label="Nome para teste" />
+            <button class="button secondary" type="submit">Entrar no palco</button>
+          </form>
+          <p class="privacy">O painel não rastreia espectadores silenciosos, IPs ou mensagens. Mostra os últimos 18 nomes públicos do chat e mantém o contador total.</p>
+        </section>
+
+        <section class="card animation-card">
+          <div class="card-title"><span>Animações do palco</span><strong>ESCOLHA</strong></div>
+          <div class="choice-grid">
+            <label>Entrada
+              <select id="entry-animation">
+                <option value="spotlight">Apresentação individual</option>
+                <option value="current">Atual</option>
+              </select>
+            </label>
+            <label>Saída
+              <select id="exit-animation">
+                <option value="walk">Caminhar para fora</option>
+                <option value="current">Atual</option>
+              </select>
+            </label>
+          </div>
+          <p class="small">As escolhas valem para os próximos participantes e ficam salvas neste navegador.</p>
+        </section>
+
+        <footer><span id="participant-count">0 participantes</span><button id="clear-stage" class="text-button">Limpar palco</button></footer>
+      </aside>
+    </main>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.185.1/examples/jsm/"
+        }
+      }
+    </script>
+    <script type="module" src="/static/app.js"></script>
+  </body>
+</html>
