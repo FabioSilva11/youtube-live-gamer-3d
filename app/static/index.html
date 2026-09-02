@@ -28,7 +28,7 @@
         <header>
           <p class="eyebrow">PAINEL DA TRANSMISSÃO</p>
           <h1>Sua live, em <em>3D.</em></h1>
-          <p class="intro">Os 18 autores mais recentes ganham um avatar animado, caminham e interagem no palco por 1 minuto.</p>
+          <p class="intro">Os 18 autores mais recentes ganham um avatar animado, exploram o mapa e interagem no palco por 1 minuto.</p>
         </header>
 
         <section class="card stream-card">
@@ -36,15 +36,9 @@
           <p id="stream-note">A própria cena 3D será enviada para o YouTube em tempo real.</p>
           <form id="stream-form" class="stream-form">
             <label>Chave de transmissão <input id="stream-key" type="password" autocomplete="off" placeholder="Cole a chave do YouTube Studio" /></label>
-            <label>Formato da tela
-              <select id="output-format">
-                <option value="desktop">PC — 16:9 (1280 × 720)</option>
-                <option value="mobile">Celular — 9:16 (720 × 1280)</option>
-              </select>
-            </label>
             <button class="button secondary" type="submit">Salvar configuração local</button>
           </form>
-          <p class="output-help">Escolha o formato antes de iniciar. A resolução selecionada é a imagem enviada ao YouTube.</p>
+          <p class="output-help">Formato fixo para PC: 16:9 em 1280 × 720, com mapa e ranking completos.</p>
           <div class="button-row">
             <button id="start-stream" class="button primary">Iniciar transmissão</button>
             <button id="stop-stream" class="button ghost" disabled>Parar</button>
@@ -67,7 +61,10 @@
           <div class="card-title"><span>Teste visual</span><strong>DEMO</strong></div>
           <form id="demo-form" class="demo-form">
             <input id="demo-name" maxlength="32" placeholder="Nome do participante" aria-label="Nome para teste" />
-            <button class="button secondary" type="submit">Entrar no palco</button>
+            <div class="button-row">
+              <button id="test-entry" class="button secondary" type="submit">Testar entrada</button>
+              <button id="test-exit" class="button ghost" type="button">Testar saída</button>
+            </div>
           </form>
           <p class="privacy">O painel não rastreia espectadores silenciosos, IPs ou mensagens. Cada autor público permanece por 1 minuto após sua última mensagem.</p>
         </section>
@@ -78,13 +75,17 @@
             <label>Entrada
               <select id="entry-animation">
                 <option value="spotlight">Apresentação individual</option>
-                <option value="current">Atual</option>
+                <option value="drop">Queda suave</option>
+                <option value="portal">Portal giratório</option>
+                <option value="current">Entrada direta</option>
               </select>
             </label>
             <label>Saída
               <select id="exit-animation">
                 <option value="walk">Caminhar para fora</option>
-                <option value="current">Atual</option>
+                <option value="float">Subir e sair</option>
+                <option value="portal">Portal giratório</option>
+                <option value="current">Saída imediata</option>
               </select>
             </label>
           </div>

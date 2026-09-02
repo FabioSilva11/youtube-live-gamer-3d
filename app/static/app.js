@@ -2,14 +2,29 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.m
 import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.185.1/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.185.1/examples/jsm/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'https://cdn.jsdelivr.net/npm/three@0.185.1/examples/jsm/utils/SkeletonUtils.js';
-import { ArrivalQueue, normaliseEntryMode, normaliseExitMode } from '/static/animation.js';
+import {
+  ArrivalQueue,
+  entryMotion,
+  exitMotion,
+  normaliseEntryMode,
+  normaliseExitMode,
+} from '/static/animation.js';
+import { captureSessionIsActive, stopMediaTracks } from '/static/capture.js';
 import { avatarLayoutFor, latestVisualParticipants } from '/static/layout.js';
 import { inactiveProfileImageIds, topChatRanking } from '/static/ranking.js';
+import { disposeOwnedRenderObject } from '/static/resources.js';
 import { mergeDashboardStatus } from '/static/status.js';
 import { terrainHeightAt } from '/static/terrain.js';
-import { normaliseOutputFormat, outputCameraPreset, outputDimensions } from '/static/output.js';
+import {
+  outputCameraPreset,
+  outputDimensions,
+  previewFovForAspect,
+  rankingOverlayLayout,
+} from '/static/output.js';
 import {
   avatarActivityAnimation,
+  explorationTarget,
+  socialCycleIndex,
   socialInteractionPhase,
   socialMeetingTarget,
   socialPartnerIndex,
@@ -28,7 +43,6 @@ const elements = {
   streamNote: document.querySelector('#stream-note'), chatStatus: document.querySelector('#chat-status'),
   rankingList: document.querySelector('#ranking-list'), rankingTotal: document.querySelector('#ranking-total'),
   entryAnimation: document.querySelector('#entry-animation'), exitAnimation: document.querySelector('#exit-animation'),
-  outputFormat: document.querySelector('#output-format'),
   start: document.querySelector('#start-stream'), stop: document.querySelector('#stop-stream'),
   disconnect: document.querySelector('#disconnect-chat'), toast: document.querySelector('#toast'),
 };
@@ -37,6 +51,14 @@ let toastTimer;
 let canvasRecorder = null;
 let outputSocket = null;
 let captureAudio = null;
+let captureRenderer = null;
+let captureCamera = null;
+let captureHudCamera = null;
+let captureMediaStream = null;
+let captureStopPromise = null;
+let captureSessionGeneration = 0;
+let captureWidth = 0;
+let captureHeight = 0;
 let dashboardStatus = {};
 let lastPresentedStreamError = null;
 const arrivalQueue = new ArrivalQueue();
@@ -44,8 +66,6 @@ let entryAnimationMode = normaliseEntryMode(localStorage.getItem('live-gamer-ent
 let exitAnimationMode = normaliseExitMode(localStorage.getItem('live-gamer-exit-animation') || 'walk');
 elements.entryAnimation.value = entryAnimationMode;
 elements.exitAnimation.value = exitAnimationMode;
-let outputFormat = normaliseOutputFormat(localStorage.getItem('live-gamer-output-format') || 'desktop');
-elements.outputFormat.value = outputFormat;
 function toast(message) {
   elements.toast.textContent = message;
   elements.toast.classList.add('show');
@@ -68,7 +88,6 @@ function updateStatus(incomingStatus) {
   elements.streamStatus.style.color = status.stream_error ? '#ff6f7d' : streaming ? '#63eed2' : '';
   elements.start.disabled = streaming || !status.ffmpeg_available || !status.stream_configured;
   elements.stop.disabled = !streaming;
-  elements.outputFormat.disabled = streaming;
   if (status.stream_error) elements.streamNote.textContent = status.stream_error;
   else if (streaming) elements.streamNote.textContent = 'O canvas Three.js está sendo enviado ao YouTube em tempo real.';
   else if (!status.ffmpeg_available) elements.streamNote.textContent = 'Instale o FFmpeg e deixe-o disponível no PATH para transmitir.';
@@ -80,14 +99,19 @@ function updateStatus(incomingStatus) {
 }
 
 // Three.js stage
-const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-renderer.setPixelRatio(1);
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFShadowMap;
-renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.18;
-renderer.autoClear = false;
+function createRenderer() {
+  const target = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  target.setPixelRatio(1);
+  target.shadowMap.enabled = true;
+  target.shadowMap.type = THREE.PCFShadowMap;
+  target.outputColorSpace = THREE.SRGBColorSpace;
+  target.toneMapping = THREE.ACESFilmicToneMapping;
+  target.toneMappingExposure = 1.18;
+  target.autoClear = false;
+  return target;
+}
+
+const renderer = createRenderer();
 elements.scene.append(renderer.domElement);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x78cdf4);
@@ -109,7 +133,7 @@ controls.enableDamping = true;
 controls.minDistance = 7;
 controls.maxPolarAngle = Math.PI * .47;
 function applyOutputCameraPreset() {
-  const preset = outputCameraPreset(outputFormat);
+  const preset = outputCameraPreset();
   camera.fov = preset.fov;
   camera.position.set(preset.position.x, preset.position.y, preset.position.z);
   controls.target.set(preset.target.x, preset.target.y, preset.target.z);
@@ -306,6 +330,7 @@ function makeLabel(name, role) {
 
 function fallbackBody() {
   const group = new THREE.Group();
+  group.userData.ownsAvatarResources = true;
   const color = new THREE.Color().setHSL(Math.random() * .18 + .44, .65, .56);
   const body = new THREE.Mesh(new THREE.CapsuleGeometry(.39, .8, 5, 12), new THREE.MeshStandardMaterial({ color, roughness: .58 }));
   body.position.y = .8; body.castShadow = true; group.add(body);
@@ -337,8 +362,14 @@ function setAvatarAnimation(group, name) {
 }
 
 function replaceAvatarBody(group, body, animations = []) {
-  if (group.userData.mixer) group.userData.mixer.stopAllAction();
-  if (group.userData.body) group.remove(group.userData.body);
+  if (group.userData.mixer) {
+    group.userData.mixer.stopAllAction();
+    if (group.userData.body) group.userData.mixer.uncacheRoot(group.userData.body);
+  }
+  if (group.userData.body) {
+    group.remove(group.userData.body);
+    disposeOwnedRenderObject(group.userData.body);
+  }
   group.userData.body = fitAvatarBody(body); group.add(group.userData.body);
   group.userData.animationClips = new Map(animations.map((clip) => [clip.name, clip]));
   group.userData.mixer = animations.length ? new THREE.AnimationMixer(group.userData.body) : null;
@@ -376,7 +407,11 @@ function createAvatar(person) {
     socialPhase: 'rest',
     socialIndex: 0,
     socialPartner: null,
-    phase: entryAnimationMode === 'spotlight' ? 'queued' : 'active',
+    layoutScale: 1,
+    entryMode: entryAnimationMode,
+    exitMode: null,
+    motionBaseRotation: 0,
+    phase: entryAnimationMode === 'current' ? 'active' : 'queued',
     phaseStartedAt: 0,
   };
   replaceAvatarBody(group, fallbackBody()); group.add(makeLabel(person.display_name, person.role));
@@ -384,10 +419,11 @@ function createAvatar(person) {
     new THREE.IcosahedronGeometry(.12, 0),
     new THREE.MeshBasicMaterial({ color: 0xff69b4, transparent: true, opacity: .95 }),
   );
+  interactionSpark.userData.ownsAvatarResources = true;
   interactionSpark.position.set(.48, 2.15, 0); interactionSpark.visible = false; group.add(interactionSpark);
   group.userData.interactionSpark = interactionSpark;
   avatarRoot.add(group); avatars.set(person.id, group);
-  if (entryAnimationMode === 'spotlight') {
+  if (entryAnimationMode !== 'current') {
     group.visible = false;
     arrivalQueue.enqueue(person.id);
   }
@@ -398,11 +434,16 @@ function createAvatar(person) {
 
 function removeAvatar(id, avatar) {
   arrivalQueue.remove(id);
-  avatar.userData.mixer?.stopAllAction();
+  if (avatar.userData.mixer) {
+    avatar.userData.mixer.stopAllAction();
+    if (avatar.userData.body) avatar.userData.mixer.uncacheRoot(avatar.userData.body);
+  }
   avatarRoot.remove(avatar);
   avatars.delete(id);
   const label = avatar.children.find((child) => child.isSprite);
   if (label) { label.material.map?.dispose(); label.material.dispose(); }
+  disposeOwnedRenderObject(avatar.userData.body);
+  disposeOwnedRenderObject(avatar.userData.interactionSpark);
 }
 
 function beginExit(id, avatar, now) {
@@ -413,10 +454,16 @@ function beginExit(id, avatar, now) {
   }
   if (avatar.userData.phase !== 'exiting') {
     avatar.userData.phase = 'exiting';
+    avatar.userData.exitMode = exitAnimationMode;
     avatar.userData.phaseStartedAt = now;
-    const direction = avatar.position.x >= 0 ? 1 : -1;
-    const exitX = direction * 9.4; const exitZ = 5.8;
-    avatar.userData.target.set(exitX, terrainHeightAt(exitX, exitZ), exitZ);
+    avatar.userData.motionBaseRotation = avatar.rotation.y;
+    if (exitAnimationMode === 'walk') {
+      const direction = avatar.position.x >= 0 ? 1 : -1;
+      const exitX = direction * 9.4; const exitZ = 5.8;
+      avatar.userData.target.set(exitX, terrainHeightAt(exitX, exitZ), exitZ);
+    } else {
+      avatar.userData.target.copy(avatar.position);
+    }
   }
 }
 
@@ -498,8 +545,15 @@ function updateParticipants(people) {
     if (!avatars.has(person.id)) createAvatar(person);
     const avatar = avatars.get(person.id); const layout = avatarLayoutFor(index, visiblePeople.length);
     avatar.userData.socialIndex = index;
-    avatar.userData.layoutTarget.set(layout.x, terrainHeightAt(layout.x, layout.z), layout.z); avatar.scale.setScalar(layout.scale);
-    if (avatar.userData.phase === 'exiting') avatar.userData.phase = 'active';
+    avatar.userData.layoutTarget.set(layout.x, terrainHeightAt(layout.x, layout.z), layout.z);
+    avatar.userData.layoutScale = layout.scale;
+    if (avatar.userData.phase !== 'entering' && avatar.userData.phase !== 'exiting') avatar.scale.setScalar(layout.scale);
+    if (avatar.userData.phase === 'exiting') {
+      avatar.userData.phase = 'active';
+      avatar.userData.exitMode = null;
+      avatar.rotation.y = avatar.userData.motionBaseRotation;
+      avatar.scale.setScalar(layout.scale);
+    }
     if (avatar.userData.phase === 'active') avatar.userData.target.copy(avatar.userData.layoutTarget);
     const label = avatar.children.find((child) => child.isSprite);
     if (label && label.userData.name !== `${person.display_name}:${person.role}`) {
@@ -512,17 +566,22 @@ function updateParticipants(people) {
 }
 
 function updateSocialTargets(now) {
+  const elapsed = now - sceneStartedAt;
   socialAvatarIds.forEach((id, index) => {
     const avatar = avatars.get(id);
     if (!avatar || avatar.userData.phase !== 'active') return;
     const partnerIndex = socialPartnerIndex(index, socialAvatarIds.length);
     const partner = partnerIndex === null ? null : avatars.get(socialAvatarIds[partnerIndex]);
-    const socialPhase = socialInteractionPhase(now - sceneStartedAt, Boolean(partner), Math.floor(index / 2));
+    const partnerReady = Boolean(partner?.visible && partner.userData.phase === 'active');
+    const socialPhase = socialInteractionPhase(elapsed, partnerReady, Math.floor(index / 2));
     avatar.userData.socialPhase = socialPhase;
-    avatar.userData.socialPartner = partner || null;
-    if (partner && (socialPhase === 'approach' || socialPhase === 'interact')) {
+    avatar.userData.socialPartner = partnerReady ? partner : null;
+    if (partnerReady && (socialPhase === 'approach' || socialPhase === 'interact')) {
       const meeting = socialMeetingTarget(avatar.userData.layoutTarget, partner.userData.layoutTarget);
       avatar.userData.target.set(meeting.x, terrainHeightAt(meeting.x, meeting.z), meeting.z);
+    } else if (socialPhase === 'explore') {
+      const exploration = explorationTarget(index, socialCycleIndex(elapsed, index));
+      avatar.userData.target.set(exploration.x, terrainHeightAt(exploration.x, exploration.z), exploration.z);
     } else {
       avatar.userData.target.copy(avatar.userData.layoutTarget);
     }
@@ -530,40 +589,70 @@ function updateSocialTargets(now) {
 }
 
 function updateArrivalAnimation(now) {
-  if (entryAnimationMode === 'current') {
-    arrivalQueue.flush().forEach((id) => {
-      const avatar = avatars.get(id);
-      if (!avatar) return;
-      avatar.visible = true; avatar.userData.phase = 'active'; avatar.userData.target.copy(avatar.userData.layoutTarget);
-    });
-    return;
-  }
   const nextId = arrivalQueue.startNext();
   if (nextId) {
     const avatar = avatars.get(nextId);
     if (!avatar) { arrivalQueue.complete(nextId); return; }
     avatar.visible = true;
-    avatar.userData.phase = 'spotlight';
+    avatar.userData.phase = 'entering';
     avatar.userData.phaseStartedAt = now;
-    avatar.position.set(0, terrainHeightAt(0, 7.2), 7.2);
-    avatar.userData.target.set(0, terrainHeightAt(0, 3.8), 3.8);
+    avatar.userData.motionBaseRotation = avatar.rotation.y;
+    if (avatar.userData.entryMode === 'spotlight') {
+      avatar.position.set(0, terrainHeightAt(0, 7.2), 7.2);
+      avatar.userData.target.set(0, terrainHeightAt(0, 3.8), 3.8);
+    } else {
+      avatar.position.set(0, terrainHeightAt(0, 3.8), 3.8);
+      avatar.userData.target.copy(avatar.position);
+    }
   }
   const activeId = arrivalQueue.active;
   const activeAvatar = activeId ? avatars.get(activeId) : null;
-  if (activeAvatar && now - activeAvatar.userData.phaseStartedAt >= 1_250) {
+  const entryDuration = activeAvatar?.userData.entryMode === 'drop' ? 1_600
+    : activeAvatar?.userData.entryMode === 'portal' ? 1_500 : 1_250;
+  if (activeAvatar && now - activeAvatar.userData.phaseStartedAt >= entryDuration) {
     activeAvatar.userData.phase = 'active';
     activeAvatar.userData.target.copy(activeAvatar.userData.layoutTarget);
+    activeAvatar.scale.setScalar(activeAvatar.userData.layoutScale);
+    activeAvatar.rotation.y = activeAvatar.userData.motionBaseRotation;
     arrivalQueue.complete(activeId);
   }
 }
 
+let previewWidth = 1;
+let previewHeight = 1;
+
+function configureHud(targetCamera, width, height) {
+  targetCamera.left = 0;
+  targetCamera.right = width;
+  targetCamera.top = height;
+  targetCamera.bottom = 0;
+  targetCamera.updateProjectionMatrix();
+}
+
+function positionRanking(width, height) {
+  const layout = rankingOverlayLayout(width, height);
+  rankingSprite.scale.set(layout.width, layout.height, 1);
+  rankingSprite.position.set(layout.x, layout.y, 0);
+}
+
+function renderWorld(targetRenderer, targetCamera, targetHudCamera, width, height) {
+  positionRanking(width, height);
+  targetRenderer.clear();
+  targetRenderer.render(scene, targetCamera);
+  targetRenderer.clearDepth();
+  targetRenderer.render(hudScene, targetHudCamera);
+}
+
 function resize() {
-  const { width, height } = outputDimensions(outputFormat);
-  elements.scene.dataset.outputFormat = outputFormat;
-  camera.aspect = width / height; camera.updateProjectionMatrix(); renderer.setSize(width, height, false);
-  hudCamera.right = width; hudCamera.top = height; hudCamera.updateProjectionMatrix();
-  const rankingWidth = Math.min(390, width * .42); const rankingHeight = rankingWidth * rankingCanvas.height / rankingCanvas.width;
-  rankingSprite.scale.set(rankingWidth, rankingHeight, 1); rankingSprite.position.set(width - rankingWidth / 2 - 24, height - rankingHeight / 2 - 24, 0);
+  previewWidth = Math.max(1, Math.round(elements.scene.clientWidth));
+  previewHeight = Math.max(1, Math.round(elements.scene.clientHeight));
+  const output = outputDimensions();
+  const preset = outputCameraPreset();
+  camera.aspect = previewWidth / previewHeight;
+  camera.fov = previewFovForAspect(preset.fov, output.width / output.height, camera.aspect);
+  camera.updateProjectionMatrix();
+  renderer.setSize(previewWidth, previewHeight, false);
+  configureHud(hudCamera, previewWidth, previewHeight);
 }
 new ResizeObserver(resize).observe(elements.scene); resize();
 const sceneStartedAt = performance.now();
@@ -590,7 +679,7 @@ function render(timestamp) {
     const distance = Math.hypot(deltaX, deltaZ);
     const moving = distance > .035;
     if (moving) {
-      const speed = avatar.userData.phase === 'exiting' ? 3.25 : avatar.userData.phase === 'spotlight' ? 2.75 : 1.6;
+      const speed = avatar.userData.phase === 'exiting' ? 3.25 : avatar.userData.phase === 'entering' ? 2.75 : 1.6;
       const step = Math.min(distance, speed * deltaSeconds);
       avatar.position.x += deltaX / distance * step;
       avatar.position.z += deltaZ / distance * step;
@@ -600,7 +689,17 @@ function render(timestamp) {
       avatar.lookAt(partnerPosition.x, avatar.position.y, partnerPosition.z);
     }
     const fallbackBob = avatar.userData.mixer ? 0 : Math.sin(t * 2 + avatar.userData.bob) * .035;
-    avatar.position.y = terrainHeightAt(avatar.position.x, avatar.position.z) + fallbackBob;
+    let visualMotion = { heightOffset: 0, scaleMultiplier: 1, spin: 0 };
+    if (avatar.userData.phase === 'entering') {
+      const duration = avatar.userData.entryMode === 'drop' ? 1_600 : avatar.userData.entryMode === 'portal' ? 1_500 : 1_250;
+      visualMotion = entryMotion(avatar.userData.entryMode, (now - avatar.userData.phaseStartedAt) / duration);
+    } else if (avatar.userData.phase === 'exiting') {
+      const duration = avatar.userData.exitMode === 'walk' ? 4_000 : 1_600;
+      visualMotion = exitMotion(avatar.userData.exitMode, (now - avatar.userData.phaseStartedAt) / duration);
+    }
+    avatar.position.y = terrainHeightAt(avatar.position.x, avatar.position.z) + fallbackBob + visualMotion.heightOffset;
+    avatar.scale.setScalar(avatar.userData.layoutScale * visualMotion.scaleMultiplier);
+    if (visualMotion.spin) avatar.rotation.y = avatar.userData.motionBaseRotation + visualMotion.spin;
     const desiredAnimation = avatarActivityAnimation({
       moving,
       socialPhase: avatar.userData.socialPhase,
@@ -614,32 +713,62 @@ function render(timestamp) {
       avatar.userData.interactionSpark.rotation.y += deltaSeconds * 2.6;
       avatar.userData.interactionSpark.position.y = 2.15 + Math.sin(t * 3 + avatar.userData.socialIndex) * .08;
     }
-    if (avatar.userData.phase === 'exiting' && (distance < .08 || now - avatar.userData.phaseStartedAt >= 4_000)) removeAvatar(id, avatar);
+    if (avatar.userData.phase === 'exiting') {
+      const elapsed = now - avatar.userData.phaseStartedAt;
+      const exitComplete = avatar.userData.exitMode === 'walk' ? distance < .08 || elapsed >= 4_000 : elapsed >= 1_600;
+      if (exitComplete) removeAvatar(id, avatar);
+    }
   }
   controls.update();
-  renderer.clear(); renderer.render(scene, camera); renderer.clearDepth(); renderer.render(hudScene, hudCamera);
+  renderWorld(renderer, camera, hudCamera, previewWidth, previewHeight);
+  if (captureRenderer && captureCamera && captureHudCamera) {
+    renderWorld(captureRenderer, captureCamera, captureHudCamera, captureWidth, captureHeight);
+  }
   requestAnimationFrame(render);
 }
 requestAnimationFrame(render);
 
 function closeOutputSocket() {
-  if (outputSocket && outputSocket.readyState < WebSocket.CLOSING) outputSocket.close();
+  const socket = outputSocket;
   outputSocket = null;
+  if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
 }
 
-async function stopCanvasCapture() {
-  if (canvasRecorder && canvasRecorder.state !== 'inactive') {
-    await new Promise((resolve) => {
-      canvasRecorder.addEventListener('stop', resolve, { once: true });
-      canvasRecorder.stop();
-    });
-  }
-  canvasRecorder = null;
-  closeOutputSocket();
-  if (captureAudio) {
-    captureAudio.source.stop();
-    await captureAudio.context.close();
-    captureAudio = null;
+function stopCanvasCapture({ closeSocket = true } = {}) {
+  captureSessionGeneration += 1;
+  if (captureStopPromise) return captureStopPromise;
+  captureStopPromise = (async () => {
+    if (canvasRecorder && canvasRecorder.state !== 'inactive') {
+      await new Promise((resolve) => {
+        canvasRecorder.addEventListener('stop', resolve, { once: true });
+        canvasRecorder.stop();
+      });
+    }
+    canvasRecorder = null;
+    if (closeSocket) closeOutputSocket();
+    stopMediaTracks(captureMediaStream);
+    captureMediaStream = null;
+    if (captureAudio) {
+      if (captureAudio.started) captureAudio.source.stop();
+      if (captureAudio.context.state !== 'closed') await captureAudio.context.close();
+      captureAudio = null;
+    }
+    if (captureRenderer) {
+      captureRenderer.dispose();
+      captureRenderer.forceContextLoss();
+      captureRenderer = null;
+    }
+    captureCamera = null;
+    captureHudCamera = null;
+    captureWidth = 0;
+    captureHeight = 0;
+  })().finally(() => { captureStopPromise = null; });
+  return captureStopPromise;
+}
+
+function assertCaptureSession(generation, socket) {
+  if (!captureSessionIsActive(generation, captureSessionGeneration, socket, outputSocket)) {
+    throw new Error('A conexão de envio foi encerrada durante a inicialização.');
   }
 }
 
@@ -647,32 +776,55 @@ async function startCanvasCapture() {
   // A retry can happen after FFmpeg/YouTube closes the previous socket.
   // Release the old recorder first so only one capture pipeline stays active.
   await stopCanvasCapture();
+  const generation = ++captureSessionGeneration;
   const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
-  outputSocket = new WebSocket(`${protocol}://${location.host}/ws/output`);
-  await new Promise((resolve, reject) => {
-    outputSocket.addEventListener('open', resolve, { once: true });
-    outputSocket.addEventListener('error', () => reject(new Error('Não foi possível abrir o envio do canvas 3D.')), { once: true });
+  const socket = new WebSocket(`${protocol}://${location.host}/ws/output`);
+  outputSocket = socket;
+  socket.addEventListener('close', () => {
+    if (outputSocket !== socket) return;
+    outputSocket = null;
+    void stopCanvasCapture({ closeSocket: false });
   });
+  await new Promise((resolve, reject) => {
+    socket.addEventListener('open', resolve, { once: true });
+    socket.addEventListener('error', () => reject(new Error('Não foi possível abrir o envio do canvas 3D.')), { once: true });
+    socket.addEventListener('close', () => reject(new Error('A conexão de envio foi encerrada durante a inicialização.')), { once: true });
+  });
+  assertCaptureSession(generation, socket);
   const context = new AudioContext();
   const destination = context.createMediaStreamDestination();
   const source = context.createConstantSource();
   const gain = context.createGain();
   gain.gain.value = 0;
   source.connect(gain).connect(destination);
+  captureAudio = { context, source, started: false };
   source.start();
+  captureAudio.started = true;
   await context.resume();
-  captureAudio = { context, source };
-  const canvasStream = renderer.domElement.captureStream(30);
-  const media = new MediaStream([...canvasStream.getVideoTracks(), ...destination.stream.getAudioTracks()]);
+  assertCaptureSession(generation, socket);
+  ({ width: captureWidth, height: captureHeight } = outputDimensions());
+  captureRenderer = createRenderer();
+  captureRenderer.setSize(captureWidth, captureHeight, false);
+  const capturePreset = outputCameraPreset();
+  captureCamera = new THREE.PerspectiveCamera(capturePreset.fov, captureWidth / captureHeight, .1, 100);
+  captureCamera.position.set(capturePreset.position.x, capturePreset.position.y, capturePreset.position.z);
+  captureCamera.lookAt(capturePreset.target.x, capturePreset.target.y, capturePreset.target.z);
+  captureCamera.updateProjectionMatrix();
+  captureHudCamera = new THREE.OrthographicCamera(0, captureWidth, captureHeight, 0, -1, 1);
+  configureHud(captureHudCamera, captureWidth, captureHeight);
+  renderWorld(captureRenderer, captureCamera, captureHudCamera, captureWidth, captureHeight);
+  const canvasStream = captureRenderer.domElement.captureStream(30);
+  captureMediaStream = new MediaStream([...canvasStream.getVideoTracks(), ...destination.stream.getAudioTracks()]);
   const preferredType = 'video/webm;codecs=vp8,opus';
   const options = MediaRecorder.isTypeSupported(preferredType)
     ? { mimeType: preferredType, videoBitsPerSecond: 3_000_000 }
     : { videoBitsPerSecond: 3_000_000 };
-  canvasRecorder = new MediaRecorder(media, options);
+  canvasRecorder = new MediaRecorder(captureMediaStream, options);
   canvasRecorder.addEventListener('dataavailable', async ({ data }) => {
     if (!data.size || !outputSocket || outputSocket.readyState !== WebSocket.OPEN) return;
     outputSocket.send(await data.arrayBuffer());
   });
+  assertCaptureSession(generation, socket);
   canvasRecorder.start(500);
 }
 
@@ -683,7 +835,24 @@ document.querySelector('#youtube-form').addEventListener('submit', async (event)
   try { updateStatus(await api('/api/chat/connect', { method: 'POST', body: JSON.stringify({ source }) })); toast('Chat conectado. Os autores públicos aparecerão no palco.'); } catch (error) { toast(error.message); }
 });
 document.querySelector('#disconnect-chat').addEventListener('click', async () => { updateStatus(await api('/api/chat/disconnect', { method: 'POST' })); toast('Chat desconectado.'); });
-document.querySelector('#demo-form').addEventListener('submit', async (event) => { event.preventDefault(); const field = document.querySelector('#demo-name'); if (!field.value.trim()) return; try { const data = await api('/api/demo/join', { method: 'POST', body: JSON.stringify({ display_name: field.value }) }); updateParticipants(data.participants); } catch (error) { toast(error.message); } });
+const demoNameField = document.querySelector('#demo-name');
+document.querySelector('#demo-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (!demoNameField.value.trim()) return toast('Informe o nome do participante de teste.');
+  try {
+    const data = await api('/api/demo/join', { method: 'POST', body: JSON.stringify({ display_name: demoNameField.value }) });
+    updateParticipants(data.participants);
+    toast('Entrada de teste iniciada.');
+  } catch (error) { toast(error.message); }
+});
+document.querySelector('#test-exit').addEventListener('click', async () => {
+  if (!demoNameField.value.trim()) return toast('Informe o nome do participante de teste.');
+  try {
+    const data = await api('/api/demo/leave', { method: 'POST', body: JSON.stringify({ display_name: demoNameField.value }) });
+    updateParticipants(data.participants);
+    toast('Saída de teste iniciada.');
+  } catch (error) { toast(error.message); }
+});
 document.querySelector('#clear-stage').addEventListener('click', async () => { await api('/api/participants/clear', { method: 'POST' }); updateParticipants([]); });
 elements.start.addEventListener('click', async () => { try { updateStatus(await api('/api/stream/start', { method: 'POST' })); await startCanvasCapture(); toast('Canvas 3D enviado. Confira a prévia no YouTube Studio antes de publicar.'); } catch (error) { await stopCanvasCapture(); try { updateStatus(await api('/api/stream/stop', { method: 'POST' })); } catch {} toast(error.message); } });
 elements.stop.addEventListener('click', async () => { await stopCanvasCapture(); updateStatus(await api('/api/stream/stop', { method: 'POST' })); toast('Envio interrompido.'); });
@@ -696,13 +865,6 @@ elements.exitAnimation.addEventListener('change', () => {
   exitAnimationMode = normaliseExitMode(elements.exitAnimation.value);
   localStorage.setItem('live-gamer-exit-animation', exitAnimationMode);
 });
-elements.outputFormat.addEventListener('change', () => {
-  outputFormat = normaliseOutputFormat(elements.outputFormat.value);
-  localStorage.setItem('live-gamer-output-format', outputFormat);
-  applyOutputCameraPreset();
-  resize();
-});
-
 async function pollStreamStatus() { try { updateStatus(await api('/api/status')); } catch {} }
 async function initialise() { try { updateParticipants(await api('/api/participants')); updateStatus(await api('/api/status')); } catch { toast('Servidor indisponível. Recarregue a página após iniciá-lo.'); } }
 function connectSocket() { const protocol = location.protocol === 'https:' ? 'wss' : 'ws'; const socket = new WebSocket(`${protocol}://${location.host}/ws`); socket.addEventListener('message', (event) => { const message = JSON.parse(event.data); if (message.type === 'participants') updateParticipants(message.data); if (message.type === 'status') updateStatus(message.data); }); socket.addEventListener('close', () => setTimeout(connectSocket, 2500)); }

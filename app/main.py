@@ -123,6 +123,12 @@ class ParticipantRegistry:
         token = f"demo:{safe_name.casefold()}"
         self.add_public_author(token, safe_name, {})
 
+    def remove_demo(self, display_name: str) -> bool:
+        safe_name = " ".join(display_name.split())[:32]
+        if not safe_name:
+            return False
+        return self._participants.pop(f"demo:{safe_name.casefold()}", None) is not None
+
     def clear(self) -> None:
         self._participants.clear()
         self._sequence = 0
@@ -673,6 +679,15 @@ async def add_demo_participant(body: DemoJoinRequest) -> dict[str, Any]:
         registry.add_demo(body.display_name)
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
+    participants = registry.snapshot()
+    await hub.broadcast({"type": "participants", "data": participants})
+    return {"participants": participants}
+
+
+@app.post("/api/demo/leave")
+async def remove_demo_participant(body: DemoJoinRequest) -> dict[str, Any]:
+    if not registry.remove_demo(body.display_name):
+        raise HTTPException(status_code=404, detail="Esse avatar de teste não está no palco.")
     participants = registry.snapshot()
     await hub.broadcast({"type": "participants", "data": participants})
     return {"participants": participants}

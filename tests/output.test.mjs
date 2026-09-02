@@ -1,30 +1,43 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { normaliseOutputFormat, outputCameraPreset, outputDimensions } from '../app/static/output.js';
+import {
+  outputCameraPreset,
+  outputDimensions,
+  previewFovForAspect,
+  rankingOverlayLayout,
+} from '../app/static/output.js';
 
 test('desktop output uses YouTube 16:9 HD dimensions', () => {
-  assert.deepEqual(outputDimensions('desktop'), { width: 1280, height: 720 });
+  assert.deepEqual(outputDimensions(), { width: 1280, height: 720 });
 });
 
-test('mobile output uses a vertical 9:16 frame', () => {
-  assert.deepEqual(outputDimensions('mobile'), { width: 720, height: 1280 });
-});
-
-test('unknown output formats fall back to desktop', () => {
-  assert.equal(normaliseOutputFormat('square'), 'desktop');
-});
-
-test('mobile camera pulls back and looks down to keep the whole meadow visible', () => {
-  const preset = outputCameraPreset('mobile');
+test('the PC camera keeps the whole meadow visible in the landscape frame', () => {
+  const preset = outputCameraPreset();
   const distance = Math.hypot(
     preset.position.x - preset.target.x,
     preset.position.y - preset.target.y,
     preset.position.z - preset.target.z,
   );
 
-  assert.ok(distance >= 45);
-  assert.ok(preset.position.y >= 25);
+  assert.ok(distance >= 14);
+  assert.ok(preset.position.y >= 5);
   assert.ok(preset.fog.far > distance);
-  assert.deepEqual(preset.target, { x: 0, y: 0, z: 0 });
+  assert.deepEqual(preset.target, { x: 0, y: 1.3, z: 0 });
+});
+
+test('a tall preview expands vertically instead of cropping the output framing', () => {
+  assert.equal(previewFovForAspect(45, 16 / 9, 16 / 9), 45);
+  assert.ok(previewFovForAspect(45, 16 / 9, 1) > 60);
+  assert.equal(previewFovForAspect(45, 9 / 16, 16 / 9), 45);
+});
+
+test('ranking stays fully inside the 1280x720 live frame safe area', () => {
+  const layout = rankingOverlayLayout(1280, 720);
+
+  assert.equal(layout.width, 390);
+  assert.ok(layout.x - layout.width / 2 >= 24);
+  assert.ok(layout.y - layout.height / 2 >= 24);
+  assert.ok(layout.x + layout.width / 2 <= 1280 - 24);
+  assert.ok(layout.y + layout.height / 2 <= 720 - 24);
 });

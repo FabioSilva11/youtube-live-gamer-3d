@@ -7,10 +7,8 @@ button, input, select { font: inherit; }
 button { cursor: pointer; }
 .shell { min-height: 100vh; display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(360px, .75fr); }
 .stage { position: relative; min-height: 640px; overflow: hidden; border-right: 1px solid #acd8a5; background: linear-gradient(180deg, #56b9f0 0%, #b9efb3 100%); }
-.scene { position: absolute; inset: 0; display: grid; place-items: center; background: #102e22; }
-.scene canvas { display: block; max-width: 100%; max-height: 100%; object-fit: contain; outline: none; }
-.scene[data-output-format="desktop"] canvas { width: 100%; height: auto; aspect-ratio: 16 / 9; }
-.scene[data-output-format="mobile"] canvas { width: auto; height: 100%; aspect-ratio: 9 / 16; }
+.scene { position: absolute; inset: 0; display: grid; place-items: center; background: #78cdf4; }
+.scene canvas { display: block; width: 100%; height: 100%; outline: none; }
 .brand { position: absolute; z-index: 1; top: 32px; left: 38px; font-size: 18px; letter-spacing: .16em; font-weight: 800; color: #1f5e38; text-shadow: 0 2px 14px #efffe8; }
 .brand b { color: #45a54b; }
 .brand-dot, .status-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #ff4d68; box-shadow: 0 0 14px #ff4d68; margin-right: 8px; }
@@ -53,7 +51,7 @@ select:focus { border-color: #62ae55; box-shadow: 0 0 0 3px rgba(98,174,85,.14);
 .primary { background: #5ab850; color: #0f3518; }
 .secondary { background: #f4ce5c; color: #4b3907; }
 .ghost { background: transparent; color: #476d4a; border-color: #b9d4b2; }
-.demo-form { grid-template-columns: 1fr auto; }
+.demo-form { grid-template-columns: 1fr; }
 .privacy { border-top: 1px solid #d7e8cf; padding-top: 12px; margin-bottom: 0 !important; font-size: 11px !important; color: #758b78 !important; }
 footer { display: flex; justify-content: space-between; align-items: center; color: #637b66; margin-top: 18px; font: 500 12px 'DM Mono', monospace; }
 .text-button { color: #418d42; background: none; border: 0; font-size: 12px; padding: 0; }

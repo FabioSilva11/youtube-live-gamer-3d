@@ -1,25 +1,25 @@
-const OUTPUT_FORMATS = new Set(['desktop', 'mobile']);
-
-export function normaliseOutputFormat(value) {
-  return OUTPUT_FORMATS.has(value) ? value : 'desktop';
+export function outputDimensions() {
+  return { width: 1280, height: 720 };
 }
 
-export function outputDimensions(value) {
-  return normaliseOutputFormat(value) === 'mobile'
-    ? { width: 720, height: 1280 }
-    : { width: 1280, height: 720 };
+export function previewFovForAspect(baseFov, outputAspect, previewAspect) {
+  if (previewAspect >= outputAspect) return baseFov;
+  const halfFov = baseFov * Math.PI / 360;
+  return Math.atan(Math.tan(halfFov) * outputAspect / previewAspect) * 360 / Math.PI;
 }
 
-export function outputCameraPreset(value) {
-  if (normaliseOutputFormat(value) === 'mobile') {
-    return {
-      fov: 45,
-      maxDistance: 60,
-      position: { x: 0, y: 28, z: 38 },
-      target: { x: 0, y: 0, z: 0 },
-      fog: { near: 28, far: 75 },
-    };
-  }
+export function rankingOverlayLayout(frameWidth, frameHeight) {
+  const width = Math.min(390, frameWidth * .42);
+  const height = width * 430 / 768;
+  return {
+    width,
+    height,
+    x: frameWidth - width / 2 - 24,
+    y: frameHeight - height / 2 - 24,
+  };
+}
+
+export function outputCameraPreset() {
   return {
     fov: 45,
     maxDistance: 19,

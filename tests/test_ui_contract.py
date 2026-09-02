@@ -39,7 +39,7 @@ class PublicChatUiContractTests(unittest.TestCase):
         self.assertIn("topChatRanking", script)
         self.assertIn("rankingCanvas", script)
         self.assertIn("hudScene", script)
-        self.assertIn("renderer.clearDepth()", script)
+        self.assertIn("targetRenderer.clearDepth()", script)
         self.assertIn("/api/profile-image/", script)
 
     def test_animation_choices_and_filled_fields_are_preserved(self):
@@ -48,28 +48,40 @@ class PublicChatUiContractTests(unittest.TestCase):
 
         self.assertIn('id="entry-animation"', html)
         self.assertIn('id="exit-animation"', html)
+        self.assertIn('value="drop"', html)
+        self.assertIn('value="float"', html)
+        self.assertIn('value="portal"', html)
+        self.assertIn('id="test-entry"', html)
+        self.assertIn('id="test-exit"', html)
+        self.assertIn("/api/demo/leave", script)
         self.assertNotIn("field.value = ''", script)
         self.assertNotIn("document.querySelector('#stream-key').value = ''", script)
 
-    def test_stream_output_can_switch_between_pc_and_mobile(self):
+    def test_stream_output_is_fixed_to_pc_1280_by_720(self):
         html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
 
-        self.assertIn('id="output-format"', html)
-        self.assertIn('value="desktop"', html)
-        self.assertIn('value="mobile"', html)
+        self.assertNotIn('id="output-format"', html)
+        self.assertNotIn('value="mobile"', html)
+        self.assertIn("1280 × 720", html)
         self.assertIn("outputDimensions", script)
         self.assertIn("outputCameraPreset", script)
         self.assertIn("applyOutputCameraPreset", script)
-        self.assertIn("live-gamer-output-format", script)
+        self.assertNotIn("live-gamer-output-format", script)
+        self.assertNotIn("outputFormat", script)
         self.assertIn("pollStreamStatus", script)
 
     def test_stream_retry_releases_the_previous_browser_capture(self):
         script = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
         capture_start = script.index("async function startCanvasCapture()")
-        socket_start = script.index("outputSocket = new WebSocket", capture_start)
+        socket_start = script.index("const socket = new WebSocket", capture_start)
 
         self.assertIn("await stopCanvasCapture();", script[capture_start:socket_start])
+        self.assertIn("stopMediaTracks(captureMediaStream)", script)
+        self.assertIn("stopCanvasCapture({ closeSocket: false })", script)
+        self.assertIn("captureSessionIsActive", script)
+        self.assertIn("captureAudio = { context, source, started: false }", script)
+        self.assertNotIn("captureCamera.copy(camera)", script)
 
     def test_characters_walk_interact_and_advertise_one_minute_presence(self):
         html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
@@ -84,6 +96,18 @@ class PublicChatUiContractTests(unittest.TestCase):
         self.assertNotIn("new THREE.Clock", script)
         self.assertIn("THREE.PCFShadowMap", script)
         self.assertNotIn("THREE.PCFSoftShadowMap", script)
+
+    def test_preview_renders_the_world_across_the_whole_stage(self):
+        styles = (ROOT / "app" / "static" / "styles.css").read_text(encoding="utf-8")
+        script = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn(".scene canvas { display: block; width: 100%; height: 100%", styles)
+        self.assertNotIn('.scene[data-output-format="desktop"] canvas', styles)
+        self.assertNotIn('.scene[data-output-format="mobile"] canvas', styles)
+        self.assertIn("elements.scene.clientWidth", script)
+        self.assertIn("elements.scene.clientHeight", script)
+        self.assertIn("captureRenderer.domElement.captureStream(30)", script)
+        self.assertNotIn("renderer.domElement.captureStream(30)", script)
 
 
 if __name__ == "__main__":

@@ -34,6 +34,15 @@ class ParticipantRegistryTests(unittest.TestCase):
         self.assertEqual(registry.snapshot()[0]["display_name"], "Player Um")
         self.assertNotIn("message", registry.snapshot()[0])
 
+    def test_removes_only_the_named_demo_participant(self):
+        registry = ParticipantRegistry()
+        registry.add_demo("  Player   Um  ")
+        registry.add_demo("Player Dois")
+
+        self.assertTrue(registry.remove_demo("player um"))
+        self.assertEqual([person["display_name"] for person in registry.snapshot()], ["Player Dois"])
+        self.assertFalse(registry.remove_demo("inexistente"))
+
     def test_removes_an_inactive_author_after_one_minute(self):
         now = [100.0]
         registry = ParticipantRegistry(clock=lambda: now[0])
