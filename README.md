@@ -28,15 +28,9 @@ Painel local em **Python/FastAPI + Three.js** para uma live no YouTube: cada pes
 
 ## Aplicativo Windows
 
-Use [LiveGamer3D.exe](output/LiveGamer3D.exe) para abrir o painel como um programa: uma janela própria exibe a interface Three.js, sem terminal e sem precisar abrir o navegador manualmente. Ao fechar a janela, o serviço local também é encerrado.
+Depois de instalar as dependências, execute `python -m app.desktop` para abrir o painel como um programa: uma janela própria exibe a interface Three.js, sem precisar abrir o navegador manualmente. Ao fechar a janela, o serviço local também é encerrado.
 
 O aplicativo usa o Microsoft Edge WebView2 instalado no Windows. Se a janela não abrir em um computador, instale o [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/).
-
-Para gerar o EXE a partir do código, instale as dependências e execute:
-
-```powershell
-.\scripts\build_windows.ps1
-```
 
 ## Rodar localmente
 

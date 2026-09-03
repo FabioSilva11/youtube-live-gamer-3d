@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Deliver a Windows EXE that renders the YouTube Live Gamer 3D Three.js UI in a native window without a terminal.
+**Goal:** Deliver a Windows desktop mode that renders the YouTube Live Gamer 3D Three.js UI in a native window.
 
-**Architecture:** `app.desktop` selects a free `127.0.0.1` port, runs the existing FastAPI app through Uvicorn in a worker thread, waits for `/api/status`, and displays that local URL through PyWebView's Edge WebView2 backend. When the window closes, `app.desktop` requests server shutdown. PyInstaller packages that entrypoint with frontend assets, GLB models, FFmpeg, and the icon.
+**Architecture:** `app.desktop` selects a free `127.0.0.1` port, runs the existing FastAPI app through Uvicorn in a worker thread, waits for `/api/status`, and displays that local URL through PyWebView's Edge WebView2 backend. When the window closes, `app.desktop` requests server shutdown.
 
-**Tech Stack:** Python 3.14, FastAPI, Uvicorn, PyWebView, Pillow, PyInstaller, Node test runner.
+**Tech Stack:** Python 3.14, FastAPI, Uvicorn, PyWebView, Pillow, Node test runner.
 
 **Spec:** `docs/superpowers/specs/2026-09-02-desktop-window-design.md`
 
@@ -15,7 +15,6 @@
 - Bind only to `127.0.0.1` and choose a free local port automatically.
 - Create a resizable 1280 x 820 window with a 1024 x 720 minimum size.
 - Closing the native window must stop and join the worker thread.
-- Build with `--noconsole`, and package FFmpeg, static files, GLB models, and the ICO.
 - Preserve chat, music, canvas capture, stream delivery, and the ten-person stage behavior.
 
 ---
@@ -167,61 +166,14 @@ git add assets app/static/live-gamer-3d-icon.png app/static/index.html tests/tes
 git commit -m "Add the Live Gamer desktop icon"
 ```
 
-### Task 3: Build the console-free EXE
+### Task 3: Regression and delivery
 
 **Files:**
-- Create: `scripts/build_windows.ps1`
-- Modify: `README.md`
-- Modify: `tests/test_desktop.py`
+- Verify: `app/`, `tests/`, and `assets/`
 
 **Interfaces:**
-- `scripts/build_windows.ps1` produces `output/LiveGamer3D.exe` from `app/desktop.py`.
-- The script includes `app\\static`, `kenney_blocky-characters_20\\Models\\GLB format`, `ffmpeg.exe`, and `assets\\live-gamer-3d-icon.ico`.
-
-- [ ] **Step 1: Add the packaging source assertion**
-
-```python
-def test_desktop_entrypoint_creates_the_native_window(self):
-    source = Path("app/desktop.py").read_text(encoding="utf-8")
-    self.assertIn("webview.create_window", source)
-    self.assertIn('webview.start(gui="edgechromium")', source)
-```
-
-- [ ] **Step 2: Run the assertion**
-
-Run: `python -m unittest tests.test_desktop.DesktopRuntimeTests.test_desktop_entrypoint_creates_the_native_window -v`
-
-Expected: PASS after Task 1.
-
-- [ ] **Step 3: Create the PowerShell build script**
-
-Use `.venv\\Scripts\\python.exe -m PyInstaller --noconfirm --onefile --noconsole --name LiveGamer3D --icon assets\\live-gamer-3d-icon.ico --collect-all webview`, pass `--add-data` for static and GLB directories, pass `--add-binary` for `Get-Command ffmpeg`, and target `app\\desktop.py`.
-
-- [ ] **Step 4: Document desktop usage**
-
-Add to `README.md`: double-click `output/LiveGamer3D.exe`; it opens the native Three.js window and closing it stops its local service. Edge WebView2 Runtime is the only Windows prerequisite when its backend is unavailable.
-
-- [ ] **Step 5: Build and manually validate**
-
-Run: `powershell -ExecutionPolicy Bypass -File scripts/build_windows.ps1`
-
-Expected: an EXE exists, starts without a terminal, creates the `YouTube Live Gamer 3D` window, loads the Three.js UI, finds bundled FFmpeg, and leaves no process or listening port after the native window is closed.
-
-- [ ] **Step 6: Commit this task**
-
-```bash
-git add scripts/build_windows.ps1 README.md tests/test_desktop.py
-git commit -m "Package the desktop Live Gamer application"
-```
-
-### Task 4: Regression and delivery
-
-**Files:**
-- Verify: `app/`, `tests/`, `assets/`, `scripts/build_windows.ps1`, `output/LiveGamer3D.exe`
-
-**Interfaces:**
-- Consumes the desktop runtime, icon, and package script.
-- Produces a validated unsigned Windows executable and synchronized source history.
+- Consumes the desktop runtime and icon.
+- Produces a validated Windows desktop mode and synchronized source history.
 
 - [ ] **Step 1: Run regression checks**
 
@@ -235,18 +187,10 @@ Run: `git diff --check`
 
 Expected: every command exits successfully.
 
-- [ ] **Step 2: Record the executable identity**
-
-Run: `Get-Item output\\LiveGamer3D.exe | Select-Object FullName,Length,LastWriteTime`
-
-Run: `Get-FileHash output\\LiveGamer3D.exe -Algorithm SHA256`
-
-Expected: a non-empty executable and SHA-256 hash.
-
-- [ ] **Step 3: Commit and push delivery**
+- [ ] **Step 2: Commit and push delivery**
 
 ```bash
-git add app assets scripts README.md requirements.txt tests docs/superpowers/plans/2026-09-02-desktop-window.md
+git add app assets README.md requirements.txt tests docs/superpowers/plans/2026-09-02-desktop-window.md
 git commit -m "Deliver the Live Gamer desktop application"
 git push origin main
 ```

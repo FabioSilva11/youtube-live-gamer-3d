@@ -2,9 +2,8 @@
 
 ## Objetivo
 
-Entregar um executável Windows que apresente a interface Three.js em uma janela
-desktop própria. O usuário não deve precisar iniciar um navegador nem manter uma
-janela de terminal aberta.
+Entregar um modo desktop para Windows que apresente a interface Three.js em uma
+janela própria. O usuário não deve precisar iniciar um navegador manualmente.
 
 ## Arquitetura
 
@@ -24,8 +23,7 @@ janela de terminal aberta.
 - Título: `YouTube Live Gamer 3D`.
 - Janela inicial de 1280 x 820 pixels, redimensionável e com tamanho mínimo
   suficiente para a interface de transmissão.
-- A distribuição usa o modo sem console: não exibe o terminal de logs visto no
-  executável anterior.
+- A janela desktop não exibe o terminal de logs do servidor local.
 - O aplicativo utiliza exclusivamente `127.0.0.1`; não cria serviço de rede
   acessível por outros dispositivos.
 
@@ -33,24 +31,14 @@ janela de terminal aberta.
 
 - Ícone original em estilo gamer 3D: fundo verde-escuro, cenário de gramado
   low-poly e símbolo claro de transmissão/play.
-- O ativo principal será fornecido em PNG e convertido para ICO com os tamanhos
-  necessários ao Windows. O ICO será aplicado ao executável e o PNG poderá ser
-  usado como favicon da página.
-
-## Empacotamento
-
-- Adicionar PyWebView às dependências do aplicativo desktop.
-- PyInstaller no modo `--noconsole`, incluindo frontend estático, modelos GLB,
-  FFmpeg e o arquivo ICO.
-- O EXE final permanece em `output/LiveGamer3D.exe`; esse diretório segue fora
-  do Git.
+- O ativo principal é fornecido em PNG e usado como favicon da página.
 
 ## Verificação
 
 - Testes unitários da escolha de porta, espera do servidor e desligamento
   coordenado, sem abrir uma janela real durante a suíte.
 - Testes existentes Python e JavaScript continuam passando.
-- Validação manual do EXE: janela nativa abre, conteúdo Three.js carrega,
+- Validação manual do modo desktop: janela nativa abre, conteúdo Three.js carrega,
   FFmpeg é encontrado e o processo/porta são liberados ao fechar.
 
 ## Fora do escopo
