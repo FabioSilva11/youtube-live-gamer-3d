@@ -4,7 +4,7 @@
 
 **Goal:** Fixar a live em 1280 × 720, preservar mapa e ranking, adicionar exploração e ampliar/testar entradas e saídas.
 
-**Architecture:** A prévia WebGL continua responsiva e usa FOV adaptativo, enquanto um renderer separado gera somente o quadro 16:9 capturado. Lógica determinística e testável fica em módulos JS puros; o FastAPI apenas adiciona/remove participantes demo e transmite snapshots.
+**Architecture:** A prévia WebGL continua responsiva e usa FOV adaptativo fora da live. Durante a transmissão, o renderer principal muda para 1280 × 720 e o próprio canvas visível é capturado, evitando uma segunda renderização da cena. Lógica determinística e testável fica em módulos JS puros; o FastAPI apenas adiciona/remove participantes demo e transmite snapshots.
 
 **Tech Stack:** Python 3, FastAPI, Three.js r185, JavaScript ES modules, `unittest`/pytest, Node test runner.
 
@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - A única resolução de transmissão é 1280 × 720.
-- A prévia deve preencher o palco sem esticar a cena capturada.
+- Durante a captura, a prévia deve preservar 16:9 e mostrar exatamente o canvas transmitido.
 - Recursos GLB compartilhados nunca podem ser descartados por avatar.
 - Campos de chave, URL e nome de teste permanecem preenchidos.
 - Nenhum teste pode iniciar uma live real.

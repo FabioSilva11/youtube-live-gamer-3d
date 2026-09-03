@@ -36,6 +36,6 @@ export function outputCameraPreset() {
     maxDistance: 30,
     position: { x: 0, y: 4.5, z: 24 },
     target: { x: 0, y: -0.8, z: 0 },
-    fog: { near: 26, far: 52 },
+    fog: { near: 30, far: 76 },
   };
 }

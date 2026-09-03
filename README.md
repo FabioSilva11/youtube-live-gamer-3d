@@ -17,7 +17,7 @@ Painel local em **Python/FastAPI + Three.js** para uma live no YouTube: cada pes
 - Leitura local do chat público a partir do link da live, sem chave de API, cookies ou login. O leitor usa a continuação pública do próprio chat e respeita o intervalo indicado pelo YouTube.
 - Modo de demonstração com botões separados para testar a entrada e a saída de um avatar sem limpar os demais.
 - Captura ao vivo do canvas Three.js via `canvas.captureStream()` + FFmpeg + RTMPS. A imagem transmitida é o próprio palco onde os avatares aparecem; não há arquivo de vídeo de origem.
-- Saída única para **PC 16:9 (1280 × 720)**, com câmera de captura independente da prévia para manter mapa e ranking completos, legíveis e sem compressão.
+- Saída única para **PC 16:9 (1280 × 720)**. Durante a live, a prévia usa o mesmo canvas enviado ao YouTube para evitar uma segunda renderização e mostrar o enquadramento exato da transmissão.
 - Monitor de entrega que informa no painel quando o FFmpeg ou a conexão com o YouTube apresentam erro.
 
 ## Requisitos
