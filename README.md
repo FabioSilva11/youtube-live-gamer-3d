@@ -95,14 +95,6 @@ Como o QR é público e não possui um formulário anterior ao pagamento, o aler
 - Não publique esta interface em uma URL pública sem autenticação, HTTPS e uma revisão de segurança. Ela foi pensada para operar em `127.0.0.1`.
 - Se a chave de transmissão foi mostrada ou enviada a alguém, redefina-a no Live Control Room imediatamente.
 
-## Verificação
-
-```powershell
-python -m unittest discover -s tests -p "test_*.py"
-node --test tests/*.test.mjs
-python -m compileall -q app
-```
-
 ## Recursos de terceiros
 
 Os 18 personagens são do pacote **Blocky Characters**, de [Kenney](https://kenney.nl/), distribuído sob **CC0 1.0**. A licença original está em `kenney_blocky-characters_20/License.txt`.
