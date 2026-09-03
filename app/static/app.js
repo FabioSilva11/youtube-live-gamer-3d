@@ -28,7 +28,7 @@ import {
   outputDimensions,
   previewFovForAspect,
   rankingOverlayLayout,
-} from '/static/output.js';
+} from '/static/output.js?v=floating-biome-3';
 import {
   avatarActivityAnimation,
   explorationTarget,
@@ -48,14 +48,16 @@ const api = async (path, options = {}) => {
 const elements = {
   scene: document.querySelector('#scene'), count: document.querySelector('#participant-count'),
   onlineCopy: document.querySelector('#online-copy'), streamStatus: document.querySelector('#stream-status'),
-  streamNote: document.querySelector('#stream-note'), chatStatus: document.querySelector('#chat-status'),
+  streamNote: document.querySelector('#stream-note'), liveSource: document.querySelector('#live-source'),
   rankingList: document.querySelector('#ranking-list'), rankingTotal: document.querySelector('#ranking-total'),
   entryAnimation: document.querySelector('#entry-animation'), exitAnimation: document.querySelector('#exit-animation'),
   start: document.querySelector('#start-stream'), stop: document.querySelector('#stop-stream'),
-  disconnect: document.querySelector('#disconnect-chat'), toast: document.querySelector('#toast'),
+  toast: document.querySelector('#toast'),
   musicFile: document.querySelector('#music-file'), musicName: document.querySelector('#music-name'),
   musicVolume: document.querySelector('#music-volume'), musicPlay: document.querySelector('#music-play'),
-  musicPause: document.querySelector('#music-pause'),
+  musicPause: document.querySelector('#music-pause'), musicVolumeValue: document.querySelector('#music-volume-value'),
+  panelTabs: [...document.querySelectorAll('[data-panel-tab]')],
+  panelCards: [...document.querySelectorAll('[data-panel]')],
 };
 
 let toastTimer;
@@ -81,11 +83,27 @@ let entryAnimationMode = normaliseEntryMode(localStorage.getItem('live-gamer-ent
 let exitAnimationMode = normaliseExitMode(localStorage.getItem('live-gamer-exit-animation') || 'walk');
 elements.entryAnimation.value = entryAnimationMode;
 elements.exitAnimation.value = exitAnimationMode;
+updateMusicVolumePresentation();
 function toast(message) {
   elements.toast.textContent = message;
   elements.toast.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => elements.toast.classList.remove('show'), 3600);
+}
+
+function updateMusicVolumePresentation() {
+  const percentage = Number(elements.musicVolume.value);
+  elements.musicVolume.style.setProperty('--volume-progress', `${percentage}%`);
+  elements.musicVolumeValue.textContent = `${percentage}%`;
+}
+
+function activatePanelTab(name) {
+  elements.panelTabs.forEach((tab) => {
+    const selected = tab.dataset.panelTab === name;
+    tab.setAttribute('aria-selected', String(selected));
+    tab.tabIndex = selected ? 0 : -1;
+  });
+  elements.panelCards.forEach((card) => { card.hidden = card.dataset.panel !== name; });
 }
 
 function updateStatus(incomingStatus) {
@@ -94,19 +112,18 @@ function updateStatus(incomingStatus) {
   const count = status.participants ?? avatars.size;
   elements.count.textContent = `${count} participante${count === 1 ? '' : 's'}`;
   const chatConnected = Boolean(status.chat_connected);
-  elements.chatStatus.textContent = chatConnected ? 'CONECTADO' : 'OFFLINE';
-  elements.chatStatus.style.color = chatConnected ? '#63eed2' : '#ff9bac';
-  elements.disconnect.disabled = !chatConnected;
   elements.onlineCopy.textContent = chatConnected ? 'Chat ao vivo conectado' : 'Aguardando chat';
   const streaming = Boolean(status.stream_running);
   elements.streamStatus.textContent = status.stream_error ? 'ERRO DE ENVIO' : streaming ? 'AO VIVO' : status.stream_configured ? 'CONFIGURADA' : 'PRONTA';
   elements.streamStatus.style.color = status.stream_error ? '#ff6f7d' : streaming ? '#63eed2' : '';
-  elements.start.disabled = streaming || !status.ffmpeg_available || !status.stream_configured;
+  const hasLiveSource = Boolean(elements.liveSource.value.trim());
+  elements.start.disabled = streaming || !status.ffmpeg_available || !status.stream_configured || !hasLiveSource;
   elements.stop.disabled = !streaming;
   elements.musicFile.disabled = streaming;
   if (status.stream_error) elements.streamNote.textContent = status.stream_error;
   else if (streaming) elements.streamNote.textContent = 'O canvas Three.js está sendo enviado ao YouTube em tempo real.';
   else if (!status.ffmpeg_available) elements.streamNote.textContent = 'Instale o FFmpeg e deixe-o disponível no PATH para transmitir.';
+  else if (!hasLiveSource) elements.streamNote.textContent = 'Informe o link da live para liberar o envio e conectar o chat.';
   else if (!status.stream_configured) elements.streamNote.textContent = 'Cole a chave do YouTube Studio para liberar o envio do canvas 3D.';
   else elements.streamNote.textContent = 'Tudo pronto: a área 3D acima será a imagem da live.';
   if (status.stream_error && status.stream_error !== lastPresentedStreamError) toast(status.stream_error);
@@ -160,7 +177,19 @@ function createRenderer() {
 const renderer = createRenderer();
 elements.scene.append(renderer.domElement);
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x78cdf4);
+const skyCanvas = document.createElement('canvas');
+skyCanvas.width = 2;
+skyCanvas.height = 512;
+const skyContext = skyCanvas.getContext('2d');
+const skyGradient = skyContext.createLinearGradient(0, 0, 0, skyCanvas.height);
+skyGradient.addColorStop(0, '#2f91ed');
+skyGradient.addColorStop(.55, '#76cef2');
+skyGradient.addColorStop(1, '#bcefff');
+skyContext.fillStyle = skyGradient;
+skyContext.fillRect(0, 0, skyCanvas.width, skyCanvas.height);
+const skyTexture = new THREE.CanvasTexture(skyCanvas);
+skyTexture.colorSpace = THREE.SRGBColorSpace;
+scene.background = skyTexture;
 scene.fog = new THREE.Fog(0x8bd7ee, 14, 35);
 const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
 const hudScene = new THREE.Scene();
@@ -190,32 +219,137 @@ function applyOutputCameraPreset() {
   controls.update();
 }
 applyOutputCameraPreset();
-const skyDome = new THREE.Mesh(
-  new THREE.SphereGeometry(78, 32, 20),
-  new THREE.ShaderMaterial({
-    side: THREE.BackSide,
-    depthWrite: false,
-    uniforms: {
-      horizonColor: { value: new THREE.Color(0xc8f4ff) },
-      zenithColor: { value: new THREE.Color(0x329df1) },
-    },
-    vertexShader: 'varying vec3 vDirection; void main(){ vDirection = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-    fragmentShader: 'uniform vec3 horizonColor; uniform vec3 zenithColor; varying vec3 vDirection; void main(){ float blend = smoothstep(-0.08, 0.72, vDirection.y); gl_FragColor = vec4(mix(horizonColor, zenithColor, blend), 1.0); }',
-  }),
-);
-scene.add(skyDome);
 scene.add(new THREE.HemisphereLight(0xd8f5ff, 0x326328, 1.85));
 const sunlight = new THREE.DirectionalLight(0xffe4a3, 3.25);
 sunlight.position.set(-8, 14, 7); sunlight.castShadow = true; sunlight.shadow.mapSize.set(2048, 2048);
 sunlight.shadow.camera.left = -11; sunlight.shadow.camera.right = 11; sunlight.shadow.camera.top = 11; sunlight.shadow.camera.bottom = -11;
 sunlight.shadow.bias = -.0005; sunlight.shadow.normalBias = .025; scene.add(sunlight);
 const warmFill = new THREE.PointLight(0xffb84d, 6.5, 24); warmFill.position.set(-8, 8, -10); scene.add(warmFill);
+const underIslandFill = new THREE.PointLight(0xffb45f, 7.5, 18, 1.7);
+underIslandFill.position.set(0, -3.2, 9);
+scene.add(underIslandFill);
 
-const meadowBase = new THREE.Mesh(
-  new THREE.CylinderGeometry(8.25, 8.65, .48, 80),
-  new THREE.MeshStandardMaterial({ color: 0x3f843a, roughness: 1 })
+function addTaperedSegment(parent, start, end, startRadius, endRadius, material, radialSegments = 6) {
+  const direction = new THREE.Vector3().subVectors(end, start);
+  const segment = new THREE.Mesh(
+    new THREE.CylinderGeometry(endRadius, startRadius, direction.length(), radialSegments),
+    material,
+  );
+  segment.position.copy(start).add(end).multiplyScalar(.5);
+  segment.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.clone().normalize());
+  segment.castShadow = true;
+  segment.receiveShadow = true;
+  parent.add(segment);
+  return segment;
+}
+
+const floatingIsland = new THREE.Group();
+scene.add(floatingIsland);
+const soilMaterial = new THREE.MeshStandardMaterial({ color: 0x754525, roughness: 1, flatShading: true });
+const islandRim = new THREE.Mesh(
+  new THREE.CylinderGeometry(8.18, 7.98, .58, 40),
+  [soilMaterial, new THREE.MeshStandardMaterial({ color: 0x4d9f3d, roughness: 1 }), soilMaterial],
 );
-meadowBase.position.y = -.47; meadowBase.receiveShadow = true; scene.add(meadowBase);
+islandRim.position.y = -.43;
+islandRim.castShadow = true;
+islandRim.receiveShadow = true;
+floatingIsland.add(islandRim);
+
+const islandRings = [
+  { y: -.66, radius: 7.98 },
+  { y: -1.12, radius: 7.35 },
+  { y: -1.72, radius: 6.25 },
+  { y: -2.38, radius: 4.95 },
+  { y: -3.02, radius: 3.55 },
+  { y: -3.56, radius: 2.05 },
+  { y: -4.4, radius: .24 },
+];
+const islandLayerColors = [0x9b6137, 0x865030, 0x7d8981, 0x626e69, 0x765b43, 0x515d59];
+const islandUndersidePositions = [];
+const islandUndersideColors = [];
+const islandSegments = 40;
+function islandRingPoint(ringIndex, segmentIndex) {
+  const ring = islandRings[ringIndex];
+  const angle = segmentIndex / islandSegments * Math.PI * 2;
+  const breakup = 1 + Math.sin(angle * 5 + ringIndex * .8) * .035 + Math.sin(angle * 11 - ringIndex) * .022;
+  return new THREE.Vector3(
+    Math.cos(angle) * ring.radius * breakup,
+    ring.y + Math.sin(angle * 7 + ringIndex) * .05,
+    Math.sin(angle) * ring.radius * breakup * .94,
+  );
+}
+function pushIslandTriangle(first, second, third, color) {
+  [first, second, third].forEach((point) => {
+    islandUndersidePositions.push(point.x, point.y, point.z);
+    islandUndersideColors.push(color.r, color.g, color.b);
+  });
+}
+for (let ringIndex = 0; ringIndex < islandRings.length - 1; ringIndex += 1) {
+  for (let segmentIndex = 0; segmentIndex < islandSegments; segmentIndex += 1) {
+    const nextSegment = (segmentIndex + 1) % islandSegments;
+    const topLeft = islandRingPoint(ringIndex, segmentIndex);
+    const topRight = islandRingPoint(ringIndex, nextSegment);
+    const bottomLeft = islandRingPoint(ringIndex + 1, segmentIndex);
+    const bottomRight = islandRingPoint(ringIndex + 1, nextSegment);
+    const shade = Math.sin(segmentIndex * 1.73 + ringIndex) * .035;
+    const layerColor = new THREE.Color(islandLayerColors[ringIndex]).offsetHSL(0, 0, shade);
+    pushIslandTriangle(topLeft, topRight, bottomLeft, layerColor);
+    pushIslandTriangle(topRight, bottomRight, bottomLeft, layerColor.clone().offsetHSL(0, 0, -.025));
+  }
+}
+const islandUndersideGeometry = new THREE.BufferGeometry();
+islandUndersideGeometry.setAttribute('position', new THREE.Float32BufferAttribute(islandUndersidePositions, 3));
+islandUndersideGeometry.setAttribute('color', new THREE.Float32BufferAttribute(islandUndersideColors, 3));
+islandUndersideGeometry.computeVertexNormals();
+const islandUnderside = new THREE.Mesh(
+  islandUndersideGeometry,
+  new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    roughness: 1,
+    flatShading: true,
+    fog: false,
+    emissive: 0x1c100b,
+    emissiveIntensity: .25,
+  }),
+);
+islandUnderside.castShadow = true;
+islandUnderside.receiveShadow = true;
+floatingIsland.add(islandUnderside);
+
+const rootMaterial = new THREE.MeshStandardMaterial({ color: 0x5b351f, roughness: 1, flatShading: true });
+function hangingRoot(points, thickness = .075) {
+  const root = new THREE.Group();
+  points.slice(0, -1).forEach((point, index) => {
+    const taper = 1 - index / (points.length + 1);
+    addTaperedSegment(
+      root,
+      new THREE.Vector3(...point),
+      new THREE.Vector3(...points[index + 1]),
+      thickness * taper,
+      Math.max(.018, thickness * (taper - .17)),
+      rootMaterial,
+      5,
+    );
+  });
+  floatingIsland.add(root);
+}
+hangingRoot([[-6.2, -.55, 4.65], [-6.08, -1.2, 4.72], [-6.28, -1.92, 4.65], [-6.18, -2.52, 4.72]], .095);
+hangingRoot([[-3.6, -.58, 7.05], [-3.48, -1.15, 7.0], [-3.62, -1.65, 6.96]], .075);
+hangingRoot([[.4, -.6, 7.62], [.28, -1.34, 7.55], [.42, -2.04, 7.48], [.35, -2.72, 7.43]], .09);
+hangingRoot([[5.15, -.55, 5.55], [5.05, -1.18, 5.45], [5.2, -1.7, 5.38]], .07);
+hangingRoot([[7.15, -.52, 2.15], [7.06, -1.1, 2.08], [7.18, -1.58, 2.02]], .065);
+
+const debrisMaterial = new THREE.MeshStandardMaterial({ color: 0x59635d, roughness: 1, flatShading: true });
+[
+  [-5.4, -2.35, 4.15, .18], [-2.8, -3.05, 5.2, .13], [.85, -3.42, 4.25, .16],
+  [3.65, -2.72, 4.75, .12], [5.42, -2.1, 2.72, .14], [-.9, -3.75, 2.15, .1],
+].forEach(([x, y, z, scale], index) => {
+  const debris = new THREE.Mesh(new THREE.DodecahedronGeometry(scale, 0), debrisMaterial);
+  debris.position.set(x, y, z);
+  debris.rotation.set(index * .23, index * .41, index * .18);
+  debris.castShadow = true;
+  floatingIsland.add(debris);
+});
 
 const meadowGeometry = new THREE.CircleGeometry(8.25, 96);
 const meadowPositions = meadowGeometry.getAttribute('position');
@@ -259,26 +393,54 @@ for (let index = 0; index < 15; index += 1) {
   stone.position.set(x, terrainHeightAt(x, z) + .035, z); stone.rotation.y = index * .61; stone.receiveShadow = true; scene.add(stone);
 }
 
+const grassBladeCount = 640;
 const grassBlades = new THREE.InstancedMesh(
-  new THREE.ConeGeometry(.035, .32, 4),
-  new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: .92 }),
-  420
+  new THREE.ConeGeometry(.032, .38, 3),
+  new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: .94, flatShading: true }),
+  grassBladeCount,
 );
+grassBlades.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 const grassTransform = new THREE.Object3D();
 const grassColor = new THREE.Color();
-for (let index = 0; index < 420; index += 1) {
-  const angle = index * 2.3999632297;
-  const radius = 1.1 + Math.sqrt((index + .5) / 420) * 6.7;
-  const x = Math.cos(angle) * radius; const z = Math.sin(angle) * radius;
-  grassTransform.position.set(x, terrainHeightAt(x, z) + .13, z);
-  grassTransform.rotation.set(0, angle, (index % 5 - 2) * .07);
-  grassTransform.scale.setScalar(.7 + (index % 7) * .07);
+const grassState = [];
+for (let candidate = 0; grassState.length < grassBladeCount; candidate += 1) {
+  const angle = candidate * 2.3999632297;
+  const radius = .72 + Math.sqrt((candidate + .5) / 760) * 7.15;
+  const x = Math.cos(angle) * radius;
+  const z = Math.sin(angle) * radius;
+  const lakeDistance = ((x + 3.8) ** 2) / 2.6 + ((z + 1.4) ** 2) / 1.25;
+  if (lakeDistance < 1.05) continue;
+  const heightScale = .68 + (candidate % 9) * .055;
+  grassState.push({
+    x,
+    z,
+    y: terrainHeightAt(x, z) + .16 * heightScale,
+    yaw: angle + (candidate % 5) * .21,
+    lean: (candidate % 7 - 3) * .018,
+    scale: heightScale,
+    phase: candidate * .73,
+  });
+}
+function animateGrassInWind(time) {
+  grassState.forEach((blade, index) => {
+    const gust = Math.sin(time * 1.35 + blade.phase) * .085 + Math.sin(time * .48 + blade.phase * .17) * .055;
+    grassTransform.position.set(blade.x, blade.y, blade.z);
+    grassTransform.rotation.set(gust * .34, blade.yaw, blade.lean + gust);
+    grassTransform.scale.set(blade.scale * .82, blade.scale, blade.scale * .82);
+    grassTransform.updateMatrix();
+    grassBlades.setMatrixAt(index, grassTransform.matrix);
+  });
+  grassBlades.instanceMatrix.needsUpdate = true;
+}
+grassState.forEach((blade, index) => {
   grassTransform.updateMatrix();
-  grassBlades.setMatrixAt(index, grassTransform.matrix);
   grassColor.setHSL(.28 + (index % 11) * .003, .7, .31 + (index % 5) * .018);
   grassBlades.setColorAt(index, grassColor);
-}
-grassBlades.instanceMatrix.needsUpdate = true; grassBlades.instanceColor.needsUpdate = true; grassBlades.receiveShadow = true; scene.add(grassBlades);
+});
+animateGrassInWind(0);
+grassBlades.instanceColor.needsUpdate = true;
+grassBlades.receiveShadow = true;
+scene.add(grassBlades);
 
 function yellowFlower(x, z, scale = 1, color = 0xffd65a) {
   const flower = new THREE.Group();
@@ -303,19 +465,102 @@ for (let index = 0; index < 28; index += 1) {
   yellowFlower(Math.cos(angle) * radius, Math.sin(angle) * radius, .65 + (index % 4) * .08, flowerPalette[index % flowerPalette.length]);
 }
 
-function goldenTree(x, z, scale = 1) {
+const windTrees = [];
+const trunkMaterial = new THREE.MeshStandardMaterial({ color: 0x724326, roughness: 1, flatShading: true });
+const branchMaterial = new THREE.MeshStandardMaterial({ color: 0x825033, roughness: 1, flatShading: true });
+const leafGeometry = new THREE.DodecahedronGeometry(.5, 0);
+const leafMaterials = [0x9dcd4b, 0x73b443, 0x4c9139, 0xb6d95e].map(
+  (color) => new THREE.MeshStandardMaterial({ color, roughness: .82, flatShading: true }),
+);
+const leafClusterLayout = [
+  [-.92, 1.22, .02, .62], [-.64, 1.55, .12, .58], [-.34, 1.82, -.06, .62],
+  [.02, 1.98, .03, .72], [.38, 1.8, -.12, .62], [.74, 1.55, .04, .59], [.98, 1.2, .08, .55],
+  [-.55, 1.18, -.38, .56], [-.15, 1.45, -.44, .64], [.34, 1.42, -.4, .6], [.7, 1.16, -.34, .52],
+  [-.58, 1.14, .42, .54], [-.18, 1.48, .46, .61], [.3, 1.5, .4, .59], [.66, 1.13, .36, .51],
+  [0, 1.05, .02, .69],
+];
+function goldenTree(x, z, scale = 1, phase = 0) {
   const tree = new THREE.Group();
-  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(.18 * scale, .25 * scale, 2.1 * scale, 7), new THREE.MeshStandardMaterial({ color: 0x805027, roughness: 1 }));
-  trunk.position.y = 1.05 * scale; trunk.castShadow = true; tree.add(trunk);
-  const leafColors = [0xffc94a, 0xf6a83c, 0xffdb63];
-  [[0, 2.35, 0, 1.15], [.55, 2.05, .08, .82], [-.5, 2.1, .12, .88]].forEach(([leafX, leafY, leafZ, leafScale], crownIndex) => {
-    const leaves = new THREE.MeshStandardMaterial({ color: leafColors[crownIndex], roughness: .72, flatShading: true });
-    const crown = new THREE.Mesh(new THREE.DodecahedronGeometry(leafScale * scale, 0), leaves);
-    crown.position.set(leafX * scale, leafY * scale, leafZ * scale); crown.castShadow = true; tree.add(crown);
+  addTaperedSegment(tree, new THREE.Vector3(0, 0, 0), new THREE.Vector3(.04, 1.18, 0), .29, .22, trunkMaterial, 7);
+  [[-.42, 0, .15], [.4, 0, .12], [.08, 0, -.4]].forEach(([rootX, rootY, rootZ]) => {
+    addTaperedSegment(tree, new THREE.Vector3(0, .18, 0), new THREE.Vector3(rootX, rootY, rootZ), .1, .035, trunkMaterial, 5);
   });
-  tree.position.set(x, terrainHeightAt(x, z), z); scene.add(tree);
+
+  const crownPivot = new THREE.Group();
+  crownPivot.position.set(.04, 1.05, 0);
+  tree.add(crownPivot);
+  addTaperedSegment(crownPivot, new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 1.18, 0), .21, .12, branchMaterial, 7);
+  [
+    [[0, .18, 0], [-.83, .92, .06], .15, .065],
+    [[0, .28, 0], [.86, .88, .04], .15, .065],
+    [[0, .52, 0], [-.48, 1.28, -.24], .13, .052],
+    [[0, .58, 0], [.55, 1.27, .25], .13, .052],
+    [[0, .7, 0], [.06, 1.55, -.16], .11, .04],
+  ].forEach(([start, end, startRadius, endRadius]) => {
+    addTaperedSegment(crownPivot, new THREE.Vector3(...start), new THREE.Vector3(...end), startRadius, endRadius, branchMaterial, 6);
+  });
+
+  const leaves = leafClusterLayout.map(([leafX, leafY, leafZ, leafScale], index) => {
+    const leaf = new THREE.Mesh(leafGeometry, leafMaterials[(index + Math.round(phase)) % leafMaterials.length]);
+    leaf.position.set(leafX, leafY, leafZ);
+    leaf.scale.setScalar(leafScale);
+    leaf.castShadow = true;
+    leaf.receiveShadow = true;
+    leaf.userData.basePosition = leaf.position.clone();
+    leaf.userData.windPhase = phase + index * .57;
+    crownPivot.add(leaf);
+    return leaf;
+  });
+  tree.position.set(x, terrainHeightAt(x, z), z);
+  tree.scale.setScalar(scale);
+  tree.userData = { crownPivot, leaves, phase };
+  windTrees.push(tree);
+  scene.add(tree);
 }
-goldenTree(-6.35, -2.9, 1.05); goldenTree(6.2, -3.6, .9); goldenTree(-5.9, 3.9, .82); goldenTree(5.9, 4.3, .76);
+goldenTree(-5.45, -2.55, 1.42, .4);
+goldenTree(5.9, -3.55, .86, 1.7);
+goldenTree(-5.8, 3.85, .78, 2.8);
+goldenTree(5.75, 4.05, .72, 4.1);
+
+function animateTreesInWind(time) {
+  windTrees.forEach((tree) => {
+    const gust = Math.sin(time * .82 + tree.userData.phase) * .045 + Math.sin(time * .31 + tree.userData.phase) * .018;
+    tree.userData.crownPivot.rotation.z = -.025 + gust;
+    tree.userData.crownPivot.rotation.x = gust * .32;
+    tree.userData.leaves.forEach((leaf) => {
+      const flutter = Math.sin(time * 1.5 + leaf.userData.windPhase);
+      leaf.rotation.z = flutter * .055;
+      leaf.rotation.x = flutter * .025;
+      leaf.position.x = leaf.userData.basePosition.x + flutter * .018;
+      leaf.position.y = leaf.userData.basePosition.y + Math.sin(time * 1.1 + leaf.userData.windPhase) * .012;
+    });
+  });
+}
+
+const windLeaves = [];
+const driftingLeafGeometry = new THREE.OctahedronGeometry(.07, 0);
+for (let index = 0; index < 18; index += 1) {
+  const leaf = new THREE.Mesh(driftingLeafGeometry, leafMaterials[index % leafMaterials.length]);
+  leaf.scale.set(1.45, .42, .8);
+  leaf.position.set(-8 + (index * 1.37) % 15.5, 1.25 + (index % 6) * .42, -4.6 + (index % 7) * 1.22);
+  leaf.userData = {
+    baseY: leaf.position.y,
+    phase: index * .91,
+    speed: .18 + (index % 5) * .035,
+  };
+  windLeaves.push(leaf);
+  scene.add(leaf);
+}
+function animateWindLeaves(time, deltaSeconds) {
+  windLeaves.forEach((leaf) => {
+    leaf.position.x += leaf.userData.speed * deltaSeconds;
+    if (leaf.position.x > 8.4) leaf.position.x = -8.4;
+    leaf.position.y = leaf.userData.baseY + Math.sin(time * 1.25 + leaf.userData.phase) * .22;
+    leaf.rotation.x += deltaSeconds * .75;
+    leaf.rotation.y += deltaSeconds * 1.15;
+    leaf.rotation.z = Math.sin(time * 1.6 + leaf.userData.phase) * .8;
+  });
+}
 
 function meadowRock(x, z, scale = 1) {
   const rock = new THREE.Mesh(
@@ -344,14 +589,179 @@ const sunGlow = new THREE.PointLight(0xffd269, 5, 18); sunGlow.position.copy(spr
 const clouds = [];
 function springCloud(x, y, z, scale = 1) {
   const cloud = new THREE.Group();
-  const material = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, transparent: true, opacity: .78, depthWrite: false });
-  [[0, 0, 0, .62], [.55, .06, .02, .46], [-.52, .02, .04, .42], [.15, .25, 0, .45]].forEach(([px, py, pz, size]) => {
-    const puff = new THREE.Mesh(new THREE.SphereGeometry(size * scale, 12, 8), material);
-    puff.position.set(px * scale, py * scale, pz * scale); cloud.add(puff);
+  const cloudMaterials = [0xffffff, 0xe6f4ff, 0xf7fbff].map(
+    (color) => new THREE.MeshStandardMaterial({ color, roughness: 1, flatShading: true, transparent: true, opacity: .9, depthWrite: false }),
+  );
+  const puffGeometry = new THREE.DodecahedronGeometry(1, 1);
+  [
+    [0, 0, 0, .68, 1.05], [.62, .02, .04, .5, 1], [-.62, -.02, .08, .48, 1],
+    [.2, .34, -.03, .51, .92], [-.2, .29, .03, .47, .96], [1.02, -.06, .1, .35, 1],
+    [-1, -.08, .12, .34, 1], [.47, .27, .02, .38, .94],
+  ].forEach(([px, py, pz, size, width], puffIndex) => {
+    const puff = new THREE.Mesh(puffGeometry, cloudMaterials[puffIndex % cloudMaterials.length]);
+    puff.position.set(px * scale, py * scale, pz * scale);
+    puff.scale.set(size * scale * width, size * scale * .78, size * scale);
+    cloud.add(puff);
   });
-  cloud.position.set(x, y, z); scene.add(cloud); clouds.push(cloud);
+  cloud.position.set(x, y, z);
+  cloud.userData.baseY = y;
+  cloud.userData.driftSpeed = .065 + clouds.length * .018;
+  cloud.userData.phase = clouds.length * 1.4;
+  scene.add(cloud);
+  clouds.push(cloud);
 }
-springCloud(-9, 7.8, -10, 1.05); springCloud(5.5, 9.1, -14, .78); springCloud(11, 6.5, -8, .62);
+springCloud(-10.5, 7.5, -12, 1.85);
+springCloud(2.6, 9.2, -15, 1.55);
+springCloud(10.8, 6.8, -10, 1.35);
+springCloud(-3.2, 5.9, -18, .88);
+springCloud(7.6, 10.7, -20, .76);
+
+const donationRoot = new THREE.Group();
+donationRoot.visible = false;
+scene.add(donationRoot);
+const donationCrystal = new THREE.Mesh(
+  new THREE.OctahedronGeometry(.52, 1),
+  new THREE.MeshStandardMaterial({ color: 0xffc84f, emissive: 0xff8a1f, emissiveIntensity: 1.25, roughness: .28, metalness: .18, flatShading: true }),
+);
+donationCrystal.position.y = 1.35;
+donationCrystal.castShadow = true;
+donationRoot.add(donationCrystal);
+const donationBeamMaterial = new THREE.MeshBasicMaterial({
+  color: 0xffe88a,
+  transparent: true,
+  opacity: 0,
+  side: THREE.DoubleSide,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+});
+const donationBeam = new THREE.Mesh(new THREE.CylinderGeometry(.72, 1.2, 4.2, 20, 1, true), donationBeamMaterial);
+donationBeam.position.y = 2.1;
+donationRoot.add(donationBeam);
+const donationWaveMaterial = new THREE.MeshBasicMaterial({
+  color: 0xffd75f,
+  transparent: true,
+  opacity: 0,
+  side: THREE.DoubleSide,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+});
+const donationWave = new THREE.Mesh(new THREE.RingGeometry(.62, .78, 48), donationWaveMaterial);
+donationWave.rotation.x = -Math.PI / 2;
+donationWave.position.y = .055;
+donationRoot.add(donationWave);
+const donationHalo = new THREE.Mesh(
+  new THREE.TorusGeometry(.82, .055, 8, 36),
+  new THREE.MeshBasicMaterial({ color: 0xfff0a1, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }),
+);
+donationHalo.rotation.x = Math.PI / 2;
+donationHalo.position.y = 1.35;
+donationRoot.add(donationHalo);
+const donationLight = new THREE.PointLight(0xffb52d, 0, 10, 2);
+donationLight.position.y = 1.5;
+donationRoot.add(donationLight);
+
+const donationParticleGeometry = new THREE.TetrahedronGeometry(.075, 0);
+const donationParticleMaterials = [0xffdc63, 0xff9f37, 0xfff2a8].map(
+  (color) => new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: .42, roughness: .45, flatShading: true }),
+);
+const donationParticles = Array.from({ length: 28 }, (_, index) => {
+  const particle = new THREE.Mesh(donationParticleGeometry, donationParticleMaterials[index % donationParticleMaterials.length]);
+  particle.userData = {
+    angle: index * 2.3999632297,
+    phase: (index % 7) / 7,
+    speed: .62 + (index % 5) * .08,
+  };
+  donationRoot.add(particle);
+  return particle;
+});
+
+const donationBannerCanvas = document.createElement('canvas');
+donationBannerCanvas.width = 1024;
+donationBannerCanvas.height = 300;
+const donationBannerContext = donationBannerCanvas.getContext('2d');
+const donationBannerTexture = new THREE.CanvasTexture(donationBannerCanvas);
+donationBannerTexture.colorSpace = THREE.SRGBColorSpace;
+const donationBannerMaterial = new THREE.SpriteMaterial({ map: donationBannerTexture, transparent: true, depthTest: false, depthWrite: false, opacity: 0 });
+const donationBanner = new THREE.Sprite(donationBannerMaterial);
+donationBanner.position.set(0, 4.15, 0);
+donationBanner.scale.set(5.8, 1.7, 1);
+donationRoot.add(donationBanner);
+
+function drawDonationBanner(donation) {
+  const context = donationBannerContext;
+  context.clearRect(0, 0, donationBannerCanvas.width, donationBannerCanvas.height);
+  const gradient = context.createLinearGradient(0, 0, donationBannerCanvas.width, donationBannerCanvas.height);
+  gradient.addColorStop(0, 'rgba(69, 45, 7, .96)');
+  gradient.addColorStop(1, 'rgba(25, 83, 45, .96)');
+  context.fillStyle = gradient;
+  context.roundRect(18, 18, 988, 264, 72);
+  context.fill();
+  context.strokeStyle = '#ffe48a';
+  context.lineWidth = 8;
+  context.stroke();
+  context.fillStyle = '#ffe790';
+  context.font = '700 34px DM Mono, monospace';
+  context.textAlign = 'center';
+  context.fillText('NOVA DOAÇÃO', 512, 72);
+  const formattedAmount = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: donation.currency || 'BRL' }).format(Number(donation.amount));
+  context.fillStyle = '#ffffff';
+  context.font = '700 58px Outfit, Arial';
+  context.fillText(`${donation.donor_name}  •  ${formattedAmount}`, 512, 150, 900);
+  if (donation.message) {
+    context.fillStyle = '#dff6c4';
+    context.font = '500 31px Outfit, Arial';
+    context.fillText(donation.message, 512, 217, 860);
+  }
+  donationBannerTexture.needsUpdate = true;
+}
+
+const donationQueue = [];
+let activeDonation = null;
+const donationAlertDuration = 7000;
+function triggerDonationAlert(donation) {
+  donationQueue.push(donation);
+}
+function animateDonationAlert(now, time, deltaSeconds) {
+  if (!activeDonation && donationQueue.length) {
+    activeDonation = { data: donationQueue.shift(), startedAt: now };
+    drawDonationBanner(activeDonation.data);
+    donationRoot.visible = true;
+  }
+  if (!activeDonation) return;
+  const elapsed = now - activeDonation.startedAt;
+  const progress = Math.min(1, elapsed / donationAlertDuration);
+  const entrance = Math.min(1, elapsed / 520);
+  const exit = elapsed > 6100 ? Math.max(0, (donationAlertDuration - elapsed) / 900) : 1;
+  const visibility = entrance * exit;
+  const pulse = .88 + Math.sin(time * 5.2) * .12;
+  donationCrystal.rotation.y += deltaSeconds * 2.25;
+  donationCrystal.rotation.z = Math.sin(time * 1.7) * .18;
+  donationCrystal.position.y = 1.35 + Math.sin(time * 2.7) * .11;
+  donationCrystal.scale.setScalar((.18 + entrance * .82) * pulse);
+  donationBeamMaterial.opacity = visibility * (.09 + Math.sin(time * 3.8) * .025);
+  donationHalo.material.opacity = visibility * .76;
+  donationHalo.rotation.z += deltaSeconds * 1.7;
+  donationHalo.scale.setScalar(.85 + Math.sin(time * 3.1) * .08);
+  donationWave.scale.setScalar(.75 + progress * 4.2);
+  donationWaveMaterial.opacity = visibility * (1 - progress) * .78;
+  donationLight.intensity = visibility * (7.5 + Math.sin(time * 4.5) * 1.5);
+  donationBannerMaterial.opacity = visibility;
+  donationBanner.position.y = 3.95 + entrance * .2 + Math.sin(time * 1.8) * .025;
+  donationParticles.forEach((particle, index) => {
+    const rise = (progress * particle.userData.speed + particle.userData.phase) % 1;
+    const radius = .32 + rise * (1.25 + (index % 4) * .18);
+    const angle = particle.userData.angle + time * .38;
+    particle.position.set(Math.cos(angle) * radius, .35 + rise * 2.65, Math.sin(angle) * radius);
+    particle.scale.setScalar(visibility * Math.sin(Math.PI * rise) * (1 + (index % 3) * .16));
+    particle.rotation.x += deltaSeconds * (1.1 + index % 3);
+    particle.rotation.y += deltaSeconds * (1.4 + index % 4);
+  });
+  if (elapsed >= donationAlertDuration) {
+    donationRoot.visible = false;
+    activeDonation = null;
+  }
+}
+
 const avatarRoot = new THREE.Group(); scene.add(avatarRoot);
 const avatars = new Map();
 let socialAvatarIds = [];
@@ -710,8 +1120,13 @@ function render(timestamp) {
   const deltaSeconds = Math.min(animationTimer.getDelta(), .05);
   updateArrivalAnimation(now);
   updateSocialTargets(now);
-  clouds.forEach((cloud, index) => {
-    cloud.position.x += deltaSeconds * (.09 + index * .025);
+  animateGrassInWind(t);
+  animateTreesInWind(t);
+  animateWindLeaves(t, deltaSeconds);
+  animateDonationAlert(now, t, deltaSeconds);
+  clouds.forEach((cloud) => {
+    cloud.position.x += deltaSeconds * cloud.userData.driftSpeed;
+    cloud.position.y = cloud.userData.baseY + Math.sin(t * .22 + cloud.userData.phase) * .08;
     if (cloud.position.x > 14) cloud.position.x = -14;
   });
   lakeRipples.forEach((ripple, index) => {
@@ -890,14 +1305,10 @@ async function startCanvasCapture() {
   canvasRecorder.start(500);
 }
 
-document.querySelector('#youtube-form').addEventListener('submit', async (event) => {
-  event.preventDefault();
-  const source = document.querySelector('#chat-source').value.trim();
-  if (!source) return toast('Informe o link público da live.');
-  try { updateStatus(await api('/api/chat/connect', { method: 'POST', body: JSON.stringify({ source }) })); toast('Chat conectado. Os autores públicos aparecerão no palco.'); } catch (error) { toast(error.message); }
-});
-document.querySelector('#disconnect-chat').addEventListener('click', async () => { updateStatus(await api('/api/chat/disconnect', { method: 'POST' })); toast('Chat desconectado.'); });
 const demoNameField = document.querySelector('#demo-name');
+const donationNameField = document.querySelector('#donation-name');
+const donationAmountField = document.querySelector('#donation-amount');
+const donationMessageField = document.querySelector('#donation-message');
 document.querySelector('#demo-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   if (!demoNameField.value.trim()) return toast('Informe o nome do participante de teste.');
@@ -915,7 +1326,24 @@ document.querySelector('#test-exit').addEventListener('click', async () => {
     toast('Saída de teste iniciada.');
   } catch (error) { toast(error.message); }
 });
+document.querySelector('#donation-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const donorName = donationNameField.value.trim();
+  const amount = Number(donationAmountField.value);
+  if (!donorName) return toast('Informe o nome de quem fez a doação.');
+  if (!Number.isFinite(amount) || amount <= 0) return toast('Informe um valor de doação válido.');
+  try {
+    await api('/api/donations/alert', {
+      method: 'POST',
+      body: JSON.stringify({ donor_name: donorName, amount, message: donationMessageField.value.trim() }),
+    });
+    toast('Alerta de doação enviado para o palco.');
+  } catch (error) { toast(error.message); }
+});
 document.querySelector('#clear-stage').addEventListener('click', async () => { await api('/api/participants/clear', { method: 'POST' }); updateParticipants([]); });
+elements.panelTabs.forEach((tab) => {
+  tab.addEventListener('click', () => activatePanelTab(tab.dataset.panelTab));
+});
 elements.musicFile.addEventListener('change', async () => {
   const [file] = elements.musicFile.files;
   if (!file) return;
@@ -935,6 +1363,7 @@ elements.musicFile.addEventListener('change', async () => {
 });
 elements.musicVolume.addEventListener('input', () => {
   musicVolume = Number(elements.musicVolume.value) / 100;
+  updateMusicVolumePresentation();
   if (musicRoute) musicRoute.gain.gain.value = musicVolume;
   else if (musicPlayer) musicPlayer.volume = musicVolume;
 });
@@ -945,7 +1374,17 @@ elements.musicPlay.addEventListener('click', async () => {
   } catch { toast('Não foi possível tocar esta faixa agora.'); }
 });
 elements.musicPause.addEventListener('click', () => { if (musicPlayer) pauseMusicPlayback(musicPlayer); });
-elements.start.addEventListener('click', async () => { try { updateStatus(await api('/api/stream/start', { method: 'POST' })); await startCanvasCapture(); toast('Canvas 3D enviado. Confira a prévia no YouTube Studio antes de publicar.'); } catch (error) { await stopCanvasCapture(); try { updateStatus(await api('/api/stream/stop', { method: 'POST' })); } catch {} toast(error.message); } });
+elements.liveSource.addEventListener('input', () => updateStatus(dashboardStatus));
+elements.start.addEventListener('click', async () => {
+  const source = elements.liveSource.value.trim();
+  if (!source) return toast('Informe o link da live para iniciar a transmissão.');
+  try {
+    updateStatus(await api('/api/chat/connect', { method: 'POST', body: JSON.stringify({ source }) }));
+    updateStatus(await api('/api/stream/start', { method: 'POST' }));
+    await startCanvasCapture();
+    toast('Chat conectado e canvas 3D enviado. Confira a prévia no YouTube Studio antes de publicar.');
+  } catch (error) { await stopCanvasCapture(); try { updateStatus(await api('/api/stream/stop', { method: 'POST' })); } catch {} toast(error.message); }
+});
 elements.stop.addEventListener('click', async () => { await stopCanvasCapture(); updateStatus(await api('/api/stream/stop', { method: 'POST' })); toast('Envio interrompido.'); });
 document.querySelector('#stream-form').addEventListener('submit', async (event) => { event.preventDefault(); const key = document.querySelector('#stream-key').value.trim(); if (!key) return toast('Informe a chave de transmissão.'); try { updateStatus(await api('/api/stream/configure', { method: 'POST', body: JSON.stringify({ stream_key: key }) })); toast('Chave salva somente nesta sessão local.'); } catch (error) { toast(error.message); } });
 elements.entryAnimation.addEventListener('change', () => {
@@ -958,5 +1397,5 @@ elements.exitAnimation.addEventListener('change', () => {
 });
 async function pollStreamStatus() { try { updateStatus(await api('/api/status')); } catch {} }
 async function initialise() { try { updateMusicControls(); updateParticipants(await api('/api/participants')); updateStatus(await api('/api/status')); } catch { toast('Servidor indisponível. Recarregue a página após iniciá-lo.'); } }
-function connectSocket() { const protocol = location.protocol === 'https:' ? 'wss' : 'ws'; const socket = new WebSocket(`${protocol}://${location.host}/ws`); socket.addEventListener('message', (event) => { const message = JSON.parse(event.data); if (message.type === 'participants') updateParticipants(message.data); if (message.type === 'status') updateStatus(message.data); }); socket.addEventListener('close', () => setTimeout(connectSocket, 2500)); }
+function connectSocket() { const protocol = location.protocol === 'https:' ? 'wss' : 'ws'; const socket = new WebSocket(`${protocol}://${location.host}/ws`); socket.addEventListener('message', (event) => { const message = JSON.parse(event.data); if (message.type === 'participants') updateParticipants(message.data); if (message.type === 'status') updateStatus(message.data); if (message.type === 'donation') triggerDonationAlert(message.data); }); socket.addEventListener('close', () => setTimeout(connectSocket, 2500)); }
 initialise(); connectSocket(); setInterval(pollStreamStatus, 3000);

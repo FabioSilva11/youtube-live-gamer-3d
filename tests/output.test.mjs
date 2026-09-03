@@ -21,9 +21,9 @@ test('the PC camera keeps the whole meadow visible in the landscape frame', () =
   );
 
   assert.ok(distance >= 14);
-  assert.ok(preset.position.y >= 5);
+  assert.ok(preset.position.y >= 4);
   assert.ok(preset.fog.far > distance);
-  assert.deepEqual(preset.target, { x: 0, y: 1.3, z: 0 });
+  assert.ok(preset.target.y <= 1);
 });
 
 test('a tall preview expands vertically instead of cropping the output framing', () => {

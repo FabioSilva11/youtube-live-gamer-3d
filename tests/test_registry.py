@@ -1,7 +1,7 @@
 import unittest
 from tempfile import TemporaryDirectory
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from fastapi import HTTPException
 
@@ -13,6 +13,7 @@ from app.main import (
     PublicChatWorker,
     SocketHub,
     StreamController,
+    DonationAlertRequest,
     classify_ffmpeg_delivery_error,
     get_profile_image,
     registry,
@@ -213,6 +214,43 @@ class ProfileImageProxyTests(unittest.IsolatedAsyncioTestCase):
                 await get_profile_image(avatar_id)
 
         self.assertEqual(caught.exception.status_code, 502)
+
+
+class StreamStartRequirementTests(unittest.IsolatedAsyncioTestCase):
+    async def test_stream_start_rejects_when_a_live_url_has_not_been_configured(self):
+        status_without_live_url = {
+            "chat_connected": False,
+            "chat_source_configured": False,
+            "chat_error": None,
+            "participants": 0,
+        }
+
+        with patch.object(live_main.chat_worker, "status", return_value=status_without_live_url):
+            with self.assertRaises(HTTPException) as caught:
+                await live_main.start_stream()
+
+        self.assertEqual(caught.exception.status_code, 422)
+        self.assertIn("link da live", caught.exception.detail.lower())
+
+
+class DonationAlertTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        registry.clear()
+
+    async def asyncTearDown(self):
+        registry.clear()
+
+    async def test_donation_alert_is_independent_from_youtube_and_does_not_create_an_avatar(self):
+        broadcast = AsyncMock()
+        body = DonationAlertRequest(donor_name="  Ana   Gamer  ", amount=25.5, message="Parabéns pelo projeto!")
+
+        with patch.object(live_main.hub, "broadcast", broadcast):
+            result = await live_main.send_donation_alert(body)
+
+        self.assertEqual(registry.snapshot(), [])
+        self.assertEqual(result["donation"]["donor_name"], "Ana Gamer")
+        self.assertEqual(result["donation"]["amount"], 25.5)
+        broadcast.assert_awaited_once_with({"type": "donation", "data": result["donation"]})
 
 
 if __name__ == "__main__":

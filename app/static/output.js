@@ -22,9 +22,9 @@ export function rankingOverlayLayout(frameWidth, frameHeight) {
 export function outputCameraPreset() {
   return {
     fov: 45,
-    maxDistance: 19,
-    position: { x: 0, y: 5.45, z: 14.8 },
-    target: { x: 0, y: 1.3, z: 0 },
-    fog: { near: 14, far: 35 },
+    maxDistance: 30,
+    position: { x: 0, y: 4.5, z: 24 },
+    target: { x: 0, y: -0.8, z: 0 },
+    fog: { near: 26, far: 52 },
   };
 }

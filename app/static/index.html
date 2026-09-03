@@ -31,10 +31,18 @@
           <p class="intro">Até 10 participantes do chat ganham um avatar animado, exploram o mapa e interagem no palco. Novas entradas substituem uma pessoa por vez.</p>
         </header>
 
-        <section class="card stream-card">
+        <nav class="panel-tabs" aria-label="Opções da transmissão" role="tablist">
+          <button id="tab-stream" class="panel-tab" type="button" role="tab" aria-selected="true" aria-controls="panel-stream" data-panel-tab="stream">Live</button>
+          <button id="tab-music" class="panel-tab" type="button" role="tab" aria-selected="false" aria-controls="panel-music" data-panel-tab="music">Música</button>
+          <button id="tab-demo" class="panel-tab" type="button" role="tab" aria-selected="false" aria-controls="panel-demo" data-panel-tab="demo">Teste</button>
+          <button id="tab-animation" class="panel-tab" type="button" role="tab" aria-selected="false" aria-controls="panel-animation" data-panel-tab="animation">Cena</button>
+        </nav>
+
+        <section id="panel-stream" class="card stream-card panel-card" data-panel="stream" role="tabpanel" aria-labelledby="tab-stream">
           <div class="card-title"><span>Transmissão</span><strong id="stream-status">PRONTA</strong></div>
           <p id="stream-note">A própria cena 3D será enviada para o YouTube em tempo real.</p>
           <form id="stream-form" class="stream-form">
+            <label>Link da live <input id="live-source" name="source" autocomplete="off" placeholder="youtube.com/live/mlKXjGTENNw" /></label>
             <label>Chave de transmissão <input id="stream-key" type="password" autocomplete="off" placeholder="Cole a chave do YouTube Studio" /></label>
             <button class="button secondary" type="submit">Salvar configuração local</button>
           </form>
@@ -45,14 +53,15 @@
           </div>
         </section>
 
-        <section class="card music-card">
+        <section id="panel-music" class="card music-card panel-card" data-panel="music" role="tabpanel" aria-labelledby="tab-music" hidden>
           <div class="card-title"><span>Música da live</span><strong>LOCAL</strong></div>
           <p id="music-name" class="small">Nenhuma faixa selecionada.</p>
           <label>Selecionar faixa
             <input id="music-file" type="file" accept="audio/mpeg,audio/wav,audio/ogg" />
           </label>
-          <label>Volume
-            <input id="music-volume" type="range" min="0" max="100" value="35" />
+          <label class="volume-control">
+            <span class="volume-label">Volume <output id="music-volume-value" for="music-volume">35%</output></span>
+            <input id="music-volume" class="volume-slider" type="range" min="0" max="100" value="35" />
           </label>
           <div class="button-row">
             <button id="music-play" class="button secondary" type="button" disabled>Tocar</button>
@@ -61,20 +70,8 @@
           <p class="privacy">A faixa toca em loop ao iniciar a transmissão. Use somente música que você tem autorização para transmitir.</p>
         </section>
 
-        <section class="card">
-          <div class="card-title"><span>Chat do YouTube</span><strong id="chat-status">OFFLINE</strong></div>
-          <p class="small">Cole o link público da live. A leitura local usa somente autores visíveis no chat e descarta o texto das mensagens.</p>
-          <form id="youtube-form">
-            <label>Link público da live <input id="chat-source" name="source" autocomplete="off" placeholder="youtube.com/live/mlKXjGTENNw" /></label>
-            <div class="button-row">
-              <button class="button primary" type="submit">Conectar chat</button>
-              <button id="disconnect-chat" class="button ghost" type="button" disabled>Desconectar</button>
-            </div>
-          </form>
-        </section>
-
-        <section class="card demo-card">
-          <div class="card-title"><span>Teste visual</span><strong>DEMO</strong></div>
+        <section id="panel-demo" class="card demo-card panel-card" data-panel="demo" role="tabpanel" aria-labelledby="tab-demo" hidden>
+          <div class="card-title"><span>Testes visuais</span><strong>DEMO</strong></div>
           <form id="demo-form" class="demo-form">
             <input id="demo-name" maxlength="32" placeholder="Nome do participante" aria-label="Nome para teste" />
             <div class="button-row">
@@ -82,10 +79,21 @@
               <button id="test-exit" class="button ghost" type="button">Testar saída</button>
             </div>
           </form>
-          <p class="privacy">O painel não rastreia espectadores silenciosos, IPs ou mensagens. Até 10 autores públicos permanecem no palco; uma nova entrada substitui somente o mais antigo.</p>
+          <div class="donation-test">
+            <div class="donation-test-title"><strong>Alerta de doação</strong><span>SEM PERSONAGEM</span></div>
+            <form id="donation-form" class="donation-form">
+              <div class="donation-fields">
+                <input id="donation-name" maxlength="32" value="Apoiador" placeholder="Nome do doador" aria-label="Nome do doador" />
+                <input id="donation-amount" type="number" min="0.01" max="1000000" step="0.01" value="10.00" placeholder="Valor" aria-label="Valor da doação" />
+              </div>
+              <input id="donation-message" maxlength="120" placeholder="Mensagem opcional" aria-label="Mensagem da doação" />
+              <button id="test-donation" class="button donation-button" type="submit">Testar doação</button>
+            </form>
+          </div>
+          <p class="privacy">A doação é independente do YouTube e não cria personagem. Até 10 autores públicos permanecem no palco.</p>
         </section>
 
-        <section class="card animation-card">
+        <section id="panel-animation" class="card animation-card panel-card" data-panel="animation" role="tabpanel" aria-labelledby="tab-animation" hidden>
           <div class="card-title"><span>Animações do palco</span><strong>ESCOLHA</strong></div>
           <div class="choice-grid">
             <label>Entrada

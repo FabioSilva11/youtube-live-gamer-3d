@@ -617,6 +617,12 @@ class DemoJoinRequest(BaseModel):
     display_name: str = Field(min_length=1, max_length=32)
 
 
+class DonationAlertRequest(BaseModel):
+    donor_name: str = Field(min_length=1, max_length=32)
+    amount: float = Field(gt=0, le=1_000_000)
+    message: str = Field(default="", max_length=120)
+
+
 class StreamConfigRequest(BaseModel):
     stream_key: str = Field(min_length=8, max_length=250)
     endpoint: str | None = Field(default=None, max_length=250)
@@ -722,6 +728,22 @@ async def remove_demo_participant(body: DemoJoinRequest) -> dict[str, Any]:
     return {"participants": participants}
 
 
+@app.post("/api/donations/alert")
+async def send_donation_alert(body: DonationAlertRequest) -> dict[str, Any]:
+    """Emits a source-independent donation event without creating a participant."""
+    donor_name = " ".join(body.donor_name.split())[:32]
+    if not donor_name:
+        raise HTTPException(status_code=422, detail="Informe o nome de quem fez a doação.")
+    donation = {
+        "donor_name": donor_name,
+        "amount": round(body.amount, 2),
+        "currency": "BRL",
+        "message": " ".join(body.message.split())[:120],
+    }
+    await hub.broadcast({"type": "donation", "data": donation})
+    return {"ok": True, "donation": donation}
+
+
 @app.post("/api/participants/clear")
 async def clear_participants() -> dict[str, Any]:
     registry.clear()
@@ -731,6 +753,8 @@ async def clear_participants() -> dict[str, Any]:
 
 @app.post("/api/stream/start")
 async def start_stream() -> dict[str, Any]:
+    if not chat_worker.status()["chat_source_configured"]:
+        raise HTTPException(status_code=422, detail="Informe o link da live antes de iniciar a transmissão.")
     try:
         stream.start()
     except RuntimeError as error:

@@ -12,14 +12,19 @@ class PublicChatUiContractTests(unittest.TestCase):
         self.assertTrue((ROOT / "app" / "static" / "live-gamer-3d-icon.png").is_file())
         self.assertIn('href="/static/live-gamer-3d-icon.png"', html)
 
-    def test_chat_form_needs_only_a_public_live_url(self):
+    def test_live_form_keeps_the_public_live_url_with_the_stream_controls(self):
         html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
 
-        self.assertIn('id="chat-source"', html)
+        self.assertIn('id="live-source"', html)
+        self.assertIn('Link da live', html)
+        self.assertNotIn('data-panel-tab="chat"', html)
+        self.assertNotIn('id="panel-chat"', html)
+        self.assertNotIn('id="youtube-form"', html)
         self.assertNotIn('id="api-key"', html)
         self.assertNotIn("Chave da API", html)
         self.assertIn("/api/chat/connect", script)
+        self.assertIn("Informe o link da live para iniciar a transmissão.", script)
         self.assertNotIn("api_key", script)
 
     def test_stage_declares_spring_world_landmarks(self):
@@ -35,6 +40,17 @@ class PublicChatUiContractTests(unittest.TestCase):
         self.assertIn("springShrub", script)
         self.assertIn("terrainHeightAt(layout.x, layout.z)", script)
         self.assertIn("terrainHeightAt(avatar.position.x, avatar.position.z)", script)
+
+    def test_stage_uses_the_approved_floating_biome_and_wind_direction(self):
+        script = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn("floatingIsland", script)
+        self.assertIn("islandUndersideGeometry", script)
+        self.assertIn("hangingRoot", script)
+        self.assertIn("windTrees", script)
+        self.assertIn("windLeaves", script)
+        self.assertIn("animateGrassInWind", script)
+        self.assertIn("cloud.userData.driftSpeed", script)
 
     def test_stage_has_a_live_chat_ranking_overlay(self):
         html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
@@ -62,6 +78,22 @@ class PublicChatUiContractTests(unittest.TestCase):
         self.assertIn("/api/demo/leave", script)
         self.assertNotIn("field.value = ''", script)
         self.assertNotIn("document.querySelector('#stream-key').value = ''", script)
+
+    def test_donation_alert_is_testable_and_never_creates_a_character(self):
+        html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn('id="donation-form"', html)
+        self.assertIn('id="donation-name"', html)
+        self.assertIn('id="donation-amount"', html)
+        self.assertIn('id="donation-message"', html)
+        self.assertIn('id="test-donation"', html)
+        self.assertIn("/api/donations/alert", script)
+        self.assertIn("donationRoot", script)
+        self.assertIn("triggerDonationAlert", script)
+        self.assertIn("animateDonationAlert", script)
+        self.assertIn("message.type === 'donation'", script)
+        self.assertIn("SEM PERSONAGEM", html)
 
     def test_stream_output_is_fixed_to_pc_1280_by_720(self):
         html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
@@ -116,6 +148,18 @@ class PublicChatUiContractTests(unittest.TestCase):
         self.assertIn("startMusicForLive", script)
         self.assertIn("createMusicCaptureRoute", script)
 
+    def test_music_volume_exposes_a_live_percentage_and_a_filled_slider_track(self):
+        html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
+        styles = (ROOT / "app" / "static" / "styles.css").read_text(encoding="utf-8")
+        script = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn('id="music-volume-value"', html)
+        self.assertIn('for="music-volume"', html)
+        self.assertIn('class="volume-slider"', html)
+        self.assertIn(".volume-slider", styles)
+        self.assertIn("--volume-progress", styles)
+        self.assertIn("updateMusicVolumePresentation", script)
+
     def test_preview_renders_the_world_across_the_whole_stage(self):
         styles = (ROOT / "app" / "static" / "styles.css").read_text(encoding="utf-8")
         script = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
@@ -127,6 +171,21 @@ class PublicChatUiContractTests(unittest.TestCase):
         self.assertIn("elements.scene.clientHeight", script)
         self.assertIn("captureRenderer.domElement.captureStream(30)", script)
         self.assertNotIn("renderer.domElement.captureStream(30)", script)
+
+    def test_control_panel_uses_compact_tabs_without_vertical_scrolling(self):
+        html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
+        styles = (ROOT / "app" / "static" / "styles.css").read_text(encoding="utf-8")
+        script = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn('class="panel-tabs"', html)
+        self.assertIn('data-panel-tab="stream"', html)
+        self.assertIn('data-panel-tab="music"', html)
+        self.assertNotIn('data-panel-tab="chat"', html)
+        self.assertIn('data-panel-tab="demo"', html)
+        self.assertIn('data-panel-tab="animation"', html)
+        self.assertIn(".panel {", styles)
+        self.assertNotIn("overflow-y: auto", styles)
+        self.assertIn("activatePanelTab", script)
 
 
 if __name__ == "__main__":
