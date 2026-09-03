@@ -19,7 +19,7 @@ import time
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Literal
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -42,6 +42,17 @@ CHARACTERS_DIR = ROOT / "kenney_blocky-characters_20" / "Models" / "GLB format"
 load_dotenv(ROOT / ".env")
 
 TRUSTED_PROFILE_IMAGE_HOSTS = ("ggpht.com", "googleusercontent.com")
+
+STREAM_PROFILES = {
+    "economy": {
+        "fps": "24", "gop": "48", "video_bitrate": "1200k",
+        "maxrate": "1400k", "bufsize": "2400k", "audio_bitrate": "96k",
+    },
+    "normal": {
+        "fps": "30", "gop": "60", "video_bitrate": "2500k",
+        "maxrate": "3000k", "bufsize": "5000k", "audio_bitrate": "128k",
+    },
+}
 
 
 def ffmpeg_executable() -> str | None:
@@ -463,6 +474,7 @@ class StreamController:
         self.last_error: str | None = None
         self._runtime_endpoint: str | None = None
         self._runtime_stream_key: str | None = None
+        self._runtime_profile = "economy"
         self._canvas_chunks: CanvasChunkBuffer | None = None
         self._writer_stop: threading.Event | None = None
         self._writer: threading.Thread | None = None
@@ -479,11 +491,14 @@ class StreamController:
             self._runtime_stream_key or os.getenv("YOUTUBE_STREAM_KEY", "").strip(),
         )
 
-    def configure(self, stream_key: str, endpoint: str | None = None) -> None:
+    def configure(self, stream_key: str, endpoint: str | None = None, profile: str = "economy") -> None:
         if not stream_key.strip():
             raise RuntimeError("Informe uma chave de transmissão.")
+        if profile not in STREAM_PROFILES:
+            raise RuntimeError("Escolha um perfil de transmissão válido.")
         self._runtime_stream_key = stream_key.strip()
         self._runtime_endpoint = endpoint.strip() if endpoint and endpoint.strip() else None
+        self._runtime_profile = profile
         self.last_error = None
 
     def status(self) -> dict[str, Any]:
@@ -494,16 +509,20 @@ class StreamController:
             "stream_configured": bool(stream_key),
             "stream_running": running,
             "stream_source": "threejs-canvas",
+            "stream_profile": self._runtime_profile,
             "stream_error": self.last_error,
         }
 
     @staticmethod
-    def canvas_command(ffmpeg: str, target: str) -> list[str]:
+    def canvas_command(ffmpeg: str, target: str, profile: str = "economy") -> list[str]:
+        settings = STREAM_PROFILES.get(profile, STREAM_PROFILES["economy"])
         return [
             ffmpeg, "-hide_banner", "-loglevel", "warning", "-f", "webm", "-i", "pipe:0",
-            "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", "-g", "60",
-            "-b:v", "2500k", "-maxrate", "3000k", "-bufsize", "5000k",
-            "-c:a", "aac", "-ar", "44100", "-b:a", "128k", "-f", "flv", target,
+            "-c:v", "libx264", "-preset", "veryfast", "-tune", "zerolatency",
+            "-pix_fmt", "yuv420p", "-r", settings["fps"], "-g", settings["gop"],
+            "-keyint_min", settings["gop"], "-sc_threshold", "0",
+            "-b:v", settings["video_bitrate"], "-maxrate", settings["maxrate"], "-bufsize", settings["bufsize"],
+            "-c:a", "aac", "-ar", "44100", "-b:a", settings["audio_bitrate"], "-f", "flv", target,
         ]
 
     def start(self) -> None:
@@ -518,7 +537,7 @@ class StreamController:
         self.last_error = None
         # The key stays server-side; FFmpeg receives WebM chunks from /ws/output.
         target = f"{endpoint.rstrip('/')}/{stream_key}"
-        command = self.canvas_command(ffmpeg, target)
+        command = self.canvas_command(ffmpeg, target, self._runtime_profile)
         try:
             self.process = subprocess.Popen(
                 command,
@@ -640,6 +659,7 @@ class DonationAlertRequest(BaseModel):
 class StreamConfigRequest(BaseModel):
     stream_key: str = Field(min_length=8, max_length=250)
     endpoint: str | None = Field(default=None, max_length=250)
+    profile: Literal["economy", "normal"] = "economy"
 
 
 class MercadoPagoConfigRequest(BaseModel):
@@ -836,7 +856,7 @@ async def start_stream() -> dict[str, Any]:
 @app.post("/api/stream/configure")
 async def configure_stream(body: StreamConfigRequest) -> dict[str, Any]:
     try:
-        stream.configure(body.stream_key, body.endpoint)
+        stream.configure(body.stream_key, body.endpoint, body.profile)
     except RuntimeError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     return dashboard_status()

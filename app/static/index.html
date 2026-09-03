@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#68b95a" />
     <title>Live Gamer 3D</title>
     <link rel="icon" type="image/png" href="/static/live-gamer-3d-icon.png" />
-    <link rel="stylesheet" href="/static/styles.css?v=mercado-pago-pix-2" />
+    <link rel="stylesheet" href="/static/styles.css?v=stream-profiles-1" />
   </head>
   <body>
     <main class="shell">
@@ -44,6 +44,12 @@
           <form id="stream-form" class="stream-form">
             <label>Link da live <input id="live-source" name="source" autocomplete="off" placeholder="youtube.com/live/mlKXjGTENNw" /></label>
             <label>Chave de transmissão <input id="stream-key" type="password" autocomplete="off" placeholder="Cole a chave do YouTube Studio" /></label>
+            <label>Qualidade da transmissão
+              <select id="stream-profile" name="profile">
+                <option value="economy">Econômico — 480p, 24 FPS, ~1,4 Mb/s</option>
+                <option value="normal">Normal — 720p, 30 FPS, ~3 Mb/s</option>
+              </select>
+            </label>
             <button class="button secondary" type="submit">Salvar configuração local</button>
           </form>
           <details id="mercado-pago-config" class="payment-config">
@@ -70,7 +76,7 @@
             </form>
             <p id="mercado-pago-note" class="payment-note">Opcional. O QR vale por 30 minutos e é renovado automaticamente.</p>
           </details>
-          <p class="output-help">Formato fixo para PC: 16:9 em 1280 × 720, com mapa e ranking completos.</p>
+          <p class="output-help" id="output-help">Modo econômico: 854 × 480, 24 FPS e aproximadamente 1,4 Mb/s.</p>
           <div class="button-row">
             <button id="start-stream" class="button primary">Iniciar transmissão</button>
             <button id="stop-stream" class="button ghost" disabled>Parar</button>

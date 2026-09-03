@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Fixar a live em 1280 × 720, preservar mapa e ranking, adicionar exploração e ampliar/testar entradas e saídas.
+**Goal:** Oferecer perfis econômico e normal, preservar mapa e ranking, adicionar exploração e ampliar/testar entradas e saídas.
 
-**Architecture:** A prévia WebGL continua responsiva e usa FOV adaptativo fora da live. Durante a transmissão, o renderer principal muda para 1280 × 720 e o próprio canvas visível é capturado, evitando uma segunda renderização da cena. Lógica determinística e testável fica em módulos JS puros; o FastAPI apenas adiciona/remove participantes demo e transmite snapshots.
+**Architecture:** A prévia WebGL continua responsiva e usa FOV adaptativo fora da live. Durante a transmissão, o renderer principal usa o perfil selecionado — econômico em 854 × 480/24 FPS ou normal em 1280 × 720/30 FPS — e o próprio canvas visível é capturado, evitando uma segunda renderização da cena. Lógica determinística e testável fica em módulos JS puros; o FastAPI apenas adiciona/remove participantes demo e transmite snapshots.
 
 **Tech Stack:** Python 3, FastAPI, Three.js r185, JavaScript ES modules, `unittest`/pytest, Node test runner.
 
@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- A única resolução de transmissão é 1280 × 720.
+- A transmissão oferece perfis econômico e normal, com resolução, FPS e bitrate alinhados entre navegador e FFmpeg.
 - Durante a captura, a prévia deve preservar 16:9 e mostrar exatamente o canvas transmitido.
 - Recursos GLB compartilhados nunca podem ser descartados por avatar.
 - Campos de chave, URL e nome de teste permanecem preenchidos.
@@ -104,7 +104,7 @@
 - Consumes: all completed tasks.
 - Produces: private repository update and an open, validated local preview.
 
-- [x] **Step 1: Update** README for PC-only 1280 × 720, exploration, animation modes and demo buttons.
+- [x] **Step 1: Update** README for selectable economic/normal output, exploration, animation modes and demo buttons.
 - [x] **Step 2: Run** `python -m pytest -q`, `node --test tests/*.test.mjs`, `python -m compileall -q app`, and `git diff --check`.
-- [x] **Step 3: Reload** `http://127.0.0.1:8000/`, test entry/exit manually, inspect 1280 × 720 framing and confirm an empty console log.
+- [x] **Step 3: Reload** `http://127.0.0.1:8000/`, test entry/exit manually, inspect both output profiles and confirm an empty console log.
 - [x] **Step 4: Review** the diff for secrets and untracked imports, then commit and push `main` to the existing private origin.

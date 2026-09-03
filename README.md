@@ -17,7 +17,7 @@ Painel local em **Python/FastAPI + Three.js** para uma live no YouTube: cada pes
 - Leitura local do chat público a partir do link da live, sem chave de API, cookies ou login. O leitor usa a continuação pública do próprio chat e respeita o intervalo indicado pelo YouTube.
 - Modo de demonstração com botões separados para testar a entrada e a saída de um avatar sem limpar os demais.
 - Captura ao vivo do canvas Three.js via `canvas.captureStream()` + FFmpeg + RTMPS. A imagem transmitida é o próprio palco onde os avatares aparecem; não há arquivo de vídeo de origem.
-- Saída única para **PC 16:9 (1280 × 720)**. Durante a live, a prévia usa o mesmo canvas enviado ao YouTube para evitar uma segunda renderização e mostrar o enquadramento exato da transmissão.
+- Dois perfis 16:9 selecionáveis: **Econômico (854 × 480, 24 FPS, ~1,4 Mb/s)** e **Normal (1280 × 720, 30 FPS, ~3 Mb/s)**. Durante a live, a prévia usa o mesmo canvas enviado ao YouTube para evitar uma segunda renderização e mostrar o enquadramento exato da transmissão.
 - Monitor de entrega que informa no painel quando o FFmpeg ou a conexão com o YouTube apresentam erro.
 
 ## Requisitos
@@ -61,7 +61,7 @@ O leitor não acessa uma conta, não usa cookies e não consegue ler chat privad
 2. No YouTube Live Control Room, copie a URL **RTMPS** e gere/copIe uma chave de transmissão. Trate essa chave como senha: se vazar, redefina-a no YouTube Studio.
 3. No `.env`, preencha `YOUTUBE_RTMPS_URL` e `YOUTUBE_STREAM_KEY`, ou cole somente a chave no formulário **Transmissão**. Nesse segundo caso, ela fica somente na memória do servidor e se perde quando ele é fechado.
 4. Com o painel aberto, clique em **Iniciar transmissão**. O navegador captura em tempo real apenas o canvas Three.js do palco, envia os quadros ao servidor local e o FFmpeg os retransmite por RTMPS. Confirme a prévia no YouTube Studio antes de clicar em “Transmitir ao vivo”.
-5. A saída é sempre **PC 16:9 em 1280 × 720**. O ranking e o mapa são renderizados dentro da área segura desse quadro.
+5. Escolha **Econômico** para upload limitado ou **Normal** para melhor definição. O ranking e o QR são compactos, renderizados em alta resolução e posicionados dentro da área segura do quadro.
 
 Mantenha esta aba aberta durante a live: ela é o encoder da cena 3D. Os controles e o painel lateral não entram na imagem transmitida.
 
@@ -73,7 +73,7 @@ Esta função é opcional e não interfere no início da live.
 
 1. Na opção **Live**, abra **Doações via Pix**, logo abaixo da chave de transmissão.
 2. Informe seu **Access Token** privado do Mercado Pago, o valor fixo de cada doação e um e-mail válido exigido para criar a cobrança.
-3. Clique em **Ativar QR Pix**. O QR aparece dentro do canvas 1280 × 720, abaixo do ranking, e também entra na captura enviada ao YouTube.
+3. Clique em **Ativar QR Pix**. O QR aparece de forma compacta no canto inferior do canvas e também entra na captura enviada ao YouTube.
 4. O servidor consulta o estado do pagamento a cada 5 segundos, sem webhook. Quando a cobrança é aprovada, dispara a animação de doação já existente e gera um novo QR. Cobranças expiradas após 30 minutos também são renovadas.
 5. Para remover o QR durante a sessão, abra novamente a opção e clique em **Desativar**.
 

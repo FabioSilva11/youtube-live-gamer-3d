@@ -2,12 +2,12 @@
 
 ## Objetivo
 
-Entregar uma única saída de transmissão em 1280 × 720, com mapa e ranking legíveis. Fora da live a prévia ocupa toda a área disponível; durante a transmissão, ela mostra o mesmo canvas 16:9 capturado. Os avatares alternam exploração da ilha e interação social, oferecem mais estilos de entrada/saída e podem ter esses dois movimentos testados separadamente pelo painel.
+Entregar perfis de transmissão econômico e normal, com mapa, ranking e QR legíveis. Fora da live a prévia ocupa toda a área disponível; durante a transmissão, ela mostra o mesmo canvas 16:9 capturado. Os avatares alternam exploração da ilha e interação social, oferecem mais estilos de entrada/saída e podem ter esses dois movimentos testados separadamente pelo painel.
 
 ## Requisitos aprovados
 
 - Remover o seletor e todo o comportamento de formato para celular.
-- Capturar a live exclusivamente em 1280 × 720 (16:9).
+- Permitir escolher entre Econômico (854 × 480, 24 FPS) e Normal (1280 × 720, 30 FPS), com bitrates correspondentes.
 - Manter a prévia adaptável fora da live e usar o próprio canvas 16:9 como prévia durante a captura.
 - Preservar o mapa inteiro e o ranking dentro da área segura da live.
 - Fazer cada avatar explorar pontos determinísticos e variados da ilha entre os encontros sociais.
@@ -20,7 +20,7 @@ Entregar uma única saída de transmissão em 1280 × 720, com mapa e ranking le
 ## Critérios de aceite
 
 - A interface não contém opção 9:16/celular.
-- A captura usa o canvas principal em 1280 × 720 e a câmera 16:9, sem uma segunda renderização da cena.
+- A captura usa o canvas principal nas dimensões e FPS do perfil selecionado, com câmera 16:9 e sem uma segunda renderização da cena.
 - O ranking fica inteiramente dentro de 24 px das bordas do quadro capturado.
 - Um ciclo social contém movimento de exploração e interação.
 - Todos os novos modos são normalizados e testados.

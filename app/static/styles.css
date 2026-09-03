@@ -60,7 +60,7 @@ form { display: grid; gap: 10px; }
 .payment-actions { flex-wrap: nowrap; }
 .pix-button { flex: 1; background: #1aaf8b; color: #073d31; }
 .payment-note { margin: 2px 11px 10px !important; font-size: 10px !important; line-height: 1.35 !important; }
-.output-help { margin-top: -3px !important; font-size: 11px !important; }
+.output-help { margin-top: -3px !important; font-size: 11px !important; color: #3f6548 !important; }
 label { display: grid; gap: 5px; color: #58745b; font-size: 12px; }
 input { min-width: 0; width: 100%; border: 1px solid #bdd6b6; background: #fbfff9; color: #25442b; padding: 10px 11px; border-radius: 8px; outline: none; }
 input:focus { border-color: #62ae55; box-shadow: 0 0 0 3px rgba(98,174,85,.14); }

@@ -42,7 +42,7 @@ def money_text(value: Decimal | float | str) -> str:
 
 def qr_png_base64(payload: str) -> str:
     """Builds a QR image when Mercado Pago returns only the Pix copy/paste code."""
-    qr = qrcode.QRCode(version=None, error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=8, border=4)
+    qr = qrcode.QRCode(version=None, error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=16, border=4)
     qr.add_data(payload)
     qr.make(fit=True)
     image = qr.make_image(fill_color="black", back_color="white")
@@ -289,7 +289,7 @@ class MercadoPagoDonationController:
             resource, charge_id, qr_code, qr_base64 = await self._create_order_charge(idempotency_key)
         if "," in qr_base64 and qr_base64.lower().startswith("data:image"):
             qr_base64 = qr_base64.split(",", 1)[1]
-        if not qr_base64 and qr_code:
+        if qr_code:
             qr_base64 = qr_png_base64(qr_code)
         if not charge_id or not qr_base64:
             raise RuntimeError("O Mercado Pago não devolveu um QR Code Pix para esta cobrança.")

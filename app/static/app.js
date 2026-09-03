@@ -24,12 +24,14 @@ import { disposeOwnedRenderObject } from '/static/resources.js';
 import { mergeDashboardStatus } from '/static/status.js';
 import { terrainHeightAt } from '/static/terrain.js';
 import {
+  normaliseOutputProfile,
   outputCameraPreset,
   outputDimensions,
+  outputProfile,
   pixOverlayLayout,
   previewFovForAspect,
   rankingOverlayLayout,
-} from '/static/output.js?v=mercado-pago-pix-4';
+} from '/static/output.js?v=stream-profiles-1';
 import {
   avatarActivityAnimation,
   explorationTarget,
@@ -50,6 +52,8 @@ const elements = {
   scene: document.querySelector('#scene'), count: document.querySelector('#participant-count'),
   onlineCopy: document.querySelector('#online-copy'), streamStatus: document.querySelector('#stream-status'),
   streamNote: document.querySelector('#stream-note'), liveSource: document.querySelector('#live-source'),
+  streamKey: document.querySelector('#stream-key'), streamProfile: document.querySelector('#stream-profile'),
+  outputHelp: document.querySelector('#output-help'),
   rankingList: document.querySelector('#ranking-list'), rankingTotal: document.querySelector('#ranking-total'),
   mercadoPagoState: document.querySelector('#mercado-pago-state'),
   mercadoPagoNote: document.querySelector('#mercado-pago-note'),
@@ -84,11 +88,14 @@ let musicRoute = null;
 let musicVolume = Number(elements.musicVolume.value) / 100;
 let dashboardStatus = {};
 let lastPresentedStreamError = null;
+let streamProfileId = normaliseOutputProfile(localStorage.getItem('live-gamer-stream-profile') || 'economy');
 const arrivalQueue = new ArrivalQueue();
 let entryAnimationMode = normaliseEntryMode(localStorage.getItem('live-gamer-entry-animation') || 'spotlight');
 let exitAnimationMode = normaliseExitMode(localStorage.getItem('live-gamer-exit-animation') || 'walk');
 elements.entryAnimation.value = entryAnimationMode;
 elements.exitAnimation.value = exitAnimationMode;
+elements.streamProfile.value = streamProfileId;
+updateStreamProfilePresentation();
 updateMusicVolumePresentation();
 function toast(message) {
   elements.toast.textContent = message;
@@ -101,6 +108,13 @@ function updateMusicVolumePresentation() {
   const percentage = Number(elements.musicVolume.value);
   elements.musicVolume.style.setProperty('--volume-progress', `${percentage}%`);
   elements.musicVolumeValue.textContent = `${percentage}%`;
+}
+
+function updateStreamProfilePresentation() {
+  const profile = outputProfile(streamProfileId);
+  elements.outputHelp.textContent = profile.id === 'normal'
+    ? 'Modo normal: 1280 × 720, 30 FPS e aproximadamente 3 Mb/s.'
+    : 'Modo econômico: 854 × 480, 24 FPS e aproximadamente 1,4 Mb/s.';
 }
 
 function activatePanelTab(name) {
@@ -120,14 +134,22 @@ function updateStatus(incomingStatus) {
   const chatConnected = Boolean(status.chat_connected);
   elements.onlineCopy.textContent = chatConnected ? 'Chat ao vivo conectado' : 'Aguardando chat';
   const streaming = Boolean(status.stream_running);
+  if (streaming && status.stream_profile) {
+    streamProfileId = normaliseOutputProfile(status.stream_profile);
+    elements.streamProfile.value = streamProfileId;
+    updateStreamProfilePresentation();
+  }
   elements.streamStatus.textContent = status.stream_error ? 'ERRO DE ENVIO' : streaming ? 'AO VIVO' : status.stream_configured ? 'CONFIGURADA' : 'PRONTA';
   elements.streamStatus.style.color = status.stream_error ? '#ff6f7d' : streaming ? '#63eed2' : '';
   const hasLiveSource = Boolean(elements.liveSource.value.trim());
   elements.start.disabled = streaming || !status.ffmpeg_available || !status.stream_configured || !hasLiveSource;
   elements.stop.disabled = !streaming;
   elements.musicFile.disabled = streaming;
+  elements.streamProfile.disabled = streaming;
   if (status.stream_error) elements.streamNote.textContent = status.stream_error;
-  else if (streaming) elements.streamNote.textContent = 'O canvas Three.js está sendo enviado ao YouTube em tempo real.';
+  else if (streaming) elements.streamNote.textContent = streamProfileId === 'normal'
+    ? 'Enviando em modo normal: 720p, 30 FPS e cerca de 3 Mb/s.'
+    : 'Enviando em modo econômico: 480p, 24 FPS e cerca de 1,4 Mb/s.';
   else if (!status.ffmpeg_available) elements.streamNote.textContent = 'Instale o FFmpeg e deixe-o disponível no PATH para transmitir.';
   else if (!hasLiveSource) elements.streamNote.textContent = 'Informe o link da live para liberar o envio e conectar o chat.';
   else if (!status.stream_configured) elements.streamNote.textContent = 'Cole a chave do YouTube Studio para liberar o envio do canvas 3D.';
@@ -203,24 +225,37 @@ const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
 const hudScene = new THREE.Scene();
 const hudCamera = new THREE.OrthographicCamera(0, 1, 1, 0, -1, 1);
 const rankingCanvas = document.createElement('canvas');
-rankingCanvas.width = 768; rankingCanvas.height = 430;
+rankingCanvas.width = 768; rankingCanvas.height = 84;
 const rankingContext = rankingCanvas.getContext('2d');
 const rankingTexture = new THREE.CanvasTexture(rankingCanvas);
 rankingTexture.colorSpace = THREE.SRGBColorSpace;
-const rankingSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: rankingTexture, transparent: true, depthTest: false, depthWrite: false }));
+rankingTexture.generateMipmaps = false;
+rankingTexture.minFilter = THREE.LinearFilter;
+rankingTexture.magFilter = THREE.LinearFilter;
+const rankingSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+  map: rankingTexture,
+  transparent: true,
+  depthTest: false,
+  depthWrite: false,
+  toneMapped: false,
+}));
 hudScene.add(rankingSprite);
 const rankingImages = new Map();
 let currentRankingPeople = [];
 const pixDonationCanvas = document.createElement('canvas');
-pixDonationCanvas.width = 640; pixDonationCanvas.height = 700;
+pixDonationCanvas.width = 1024; pixDonationCanvas.height = 1160;
 const pixDonationContext = pixDonationCanvas.getContext('2d');
 const pixDonationTexture = new THREE.CanvasTexture(pixDonationCanvas);
 pixDonationTexture.colorSpace = THREE.SRGBColorSpace;
+pixDonationTexture.generateMipmaps = false;
+pixDonationTexture.minFilter = THREE.LinearFilter;
+pixDonationTexture.magFilter = THREE.LinearFilter;
 const pixDonationSprite = new THREE.Sprite(new THREE.SpriteMaterial({
   map: pixDonationTexture,
   transparent: true,
   depthTest: false,
   depthWrite: false,
+  toneMapped: false,
 }));
 pixDonationSprite.visible = false;
 hudScene.add(pixDonationSprite);
@@ -236,26 +271,24 @@ function hideMercadoPagoQr() {
 function drawMercadoPagoQr(image, state) {
   const context = pixDonationContext;
   context.clearRect(0, 0, pixDonationCanvas.width, pixDonationCanvas.height);
-  const gradient = context.createLinearGradient(0, 0, 640, 700);
-  gradient.addColorStop(0, 'rgba(9, 66, 51, .97)');
-  gradient.addColorStop(1, 'rgba(18, 45, 37, .97)');
+  const gradient = context.createLinearGradient(0, 0, 1024, 1160);
+  gradient.addColorStop(0, '#063f30');
+  gradient.addColorStop(1, '#09291f');
   context.fillStyle = gradient;
-  context.beginPath(); context.roundRect(10, 10, 620, 680, 38); context.fill();
-  context.strokeStyle = '#79efd0'; context.lineWidth = 7; context.stroke();
-  context.fillStyle = '#82f2d2'; context.font = '700 31px DM Mono, monospace';
+  context.beginPath(); context.roundRect(8, 8, 1008, 1144, 44); context.fill();
+  context.strokeStyle = '#9af4d9'; context.lineWidth = 10; context.stroke();
+  context.fillStyle = '#ffffff'; context.font = '700 58px Arial, sans-serif';
   context.textAlign = 'center'; context.textBaseline = 'middle';
-  context.fillText('APOIE A LIVE VIA PIX', 320, 50);
+  context.fillText('PIX DA LIVE', 512, 62);
   context.fillStyle = '#ffffff';
-  context.beginPath(); context.roundRect(55, 82, 530, 530, 28); context.fill();
-  const qrSize = 470;
+  context.beginPath(); context.roundRect(42, 112, 940, 940, 28); context.fill();
+  const qrSize = 872;
   context.imageSmoothingEnabled = false;
-  context.drawImage(image, 85, 112, qrSize, qrSize);
+  context.drawImage(image, 76, 146, qrSize, qrSize);
   context.imageSmoothingEnabled = true;
   const formattedAmount = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: state.currency || 'BRL' }).format(Number(state.amount));
-  context.fillStyle = '#fff6ae'; context.font = '700 43px Outfit, Arial';
-  context.fillText(formattedAmount, 320, 635);
-  context.fillStyle = '#d8fff3'; context.font = '500 22px Outfit, Arial';
-  context.fillText('Escaneie com o aplicativo do seu banco', 320, 672);
+  context.fillStyle = '#fff29a'; context.font = '700 68px Arial, sans-serif';
+  context.fillText(formattedAmount, 512, 1100);
   pixDonationTexture.needsUpdate = true;
   pixDonationSprite.visible = true;
 }
@@ -1827,23 +1860,25 @@ function drawRankingAvatar(person, x, y, radius) {
 }
 
 function drawRankingCanvas() {
+  const desiredHeight = currentRankingPeople.length ? 102 + currentRankingPeople.length * 61 : 84;
+  if (rankingCanvas.height !== desiredHeight) rankingCanvas.height = desiredHeight;
   rankingContext.clearRect(0, 0, rankingCanvas.width, rankingCanvas.height);
-  rankingContext.fillStyle = 'rgba(17, 62, 39, .91)';
-  rankingContext.beginPath(); rankingContext.roundRect(8, 8, 752, 414, 34); rankingContext.fill();
-  rankingContext.strokeStyle = '#d7eca4'; rankingContext.lineWidth = 4; rankingContext.stroke();
-  rankingContext.fillStyle = '#e8f6b7'; rankingContext.font = '700 28px DM Mono, monospace'; rankingContext.textAlign = 'left'; rankingContext.textBaseline = 'middle';
-  rankingContext.fillText('RANKING DO CHAT', 42, 51);
-  rankingContext.font = '500 22px DM Mono, monospace'; rankingContext.fillStyle = '#fff3a0'; rankingContext.textAlign = 'right';
-  rankingContext.fillText(`${currentRankingPeople.length ? elements.rankingTotal.textContent : '0 autores'}`, 722, 51);
+  rankingContext.fillStyle = 'rgba(7, 54, 35, .96)';
+  rankingContext.beginPath(); rankingContext.roundRect(8, 8, 752, rankingCanvas.height - 16, 30); rankingContext.fill();
+  rankingContext.strokeStyle = '#e2f4ae'; rankingContext.lineWidth = 5; rankingContext.stroke();
+  rankingContext.fillStyle = '#ffffff'; rankingContext.font = '700 34px Arial, sans-serif'; rankingContext.textAlign = 'left'; rankingContext.textBaseline = 'middle';
+  rankingContext.fillText('RANKING DO CHAT', 38, 42);
+  rankingContext.font = '700 26px Arial, sans-serif'; rankingContext.fillStyle = '#fff19a'; rankingContext.textAlign = 'right';
+  rankingContext.fillText(`${currentRankingPeople.length ? elements.rankingTotal.textContent : '0 autores'}`, 724, 42);
   currentRankingPeople.forEach((person, index) => {
-    const y = 105 + index * 61;
-    rankingContext.fillStyle = index === 0 ? 'rgba(255, 232, 121, .16)' : 'rgba(255,255,255,.055)';
+    const y = 94 + index * 61;
+    rankingContext.fillStyle = index === 0 ? 'rgba(255, 232, 121, .22)' : 'rgba(255,255,255,.085)';
     rankingContext.beginPath(); rankingContext.roundRect(28, y - 26, 712, 53, 20); rankingContext.fill();
-    rankingContext.fillStyle = '#f4ce5c'; rankingContext.font = '700 22px DM Mono, monospace'; rankingContext.textAlign = 'center'; rankingContext.fillText(`${index + 1}`, 57, y);
+    rankingContext.fillStyle = '#ffe36e'; rankingContext.font = '700 27px Arial, sans-serif'; rankingContext.textAlign = 'center'; rankingContext.fillText(`${index + 1}`, 57, y);
     drawRankingAvatar(person, 107, y, 22);
-    rankingContext.fillStyle = '#f7fff0'; rankingContext.font = '600 25px Outfit, Arial'; rankingContext.textAlign = 'left';
+    rankingContext.fillStyle = '#ffffff'; rankingContext.font = '700 30px Arial, sans-serif'; rankingContext.textAlign = 'left';
     rankingContext.fillText(person.display_name, 145, y, 455);
-    rankingContext.fillStyle = '#c9e9b7'; rankingContext.font = '500 20px DM Mono, monospace'; rankingContext.textAlign = 'right';
+    rankingContext.fillStyle = '#dff7ca'; rankingContext.font = '700 24px Arial, sans-serif'; rankingContext.textAlign = 'right';
     rankingContext.fillText(`${person.messages} msg`, 710, y);
   });
   rankingTexture.needsUpdate = true;
@@ -1944,7 +1979,7 @@ function configureHud(targetCamera, width, height) {
 }
 
 function positionRanking(width, height) {
-  const layout = rankingOverlayLayout(width, height);
+  const layout = rankingOverlayLayout(width, height, currentRankingPeople.length);
   rankingSprite.scale.set(layout.width, layout.height, 1);
   rankingSprite.position.set(layout.x, layout.y, 0);
 }
@@ -1968,7 +2003,7 @@ function resize() {
   previewWidth = Math.max(1, Math.round(elements.scene.clientWidth));
   previewHeight = Math.max(1, Math.round(elements.scene.clientHeight));
   if (captureWidth && captureHeight) return;
-  const output = outputDimensions();
+  const output = outputDimensions(streamProfileId);
   const preset = outputCameraPreset();
   camera.aspect = previewWidth / previewHeight;
   camera.fov = previewFovForAspect(preset.fov, output.width / output.height, camera.aspect);
@@ -1988,7 +2023,7 @@ function enterCaptureView() {
       fogFar: scene.fog.far,
     };
   }
-  ({ width: captureWidth, height: captureHeight } = outputDimensions());
+  ({ width: captureWidth, height: captureHeight } = outputDimensions(streamProfileId));
   applyOutputCameraPreset();
   camera.aspect = captureWidth / captureHeight;
   camera.updateProjectionMatrix();
@@ -2211,12 +2246,13 @@ async function startCanvasCapture() {
   assertCaptureSession(generation, socket);
   enterCaptureView();
   renderWorld(renderer, camera, hudCamera, captureWidth, captureHeight);
-  const canvasStream = renderer.domElement.captureStream(30);
+  const profile = outputProfile(streamProfileId);
+  const canvasStream = renderer.domElement.captureStream(profile.fps);
   captureMediaStream = new MediaStream([...canvasStream.getVideoTracks(), audioTrack]);
   const preferredType = 'video/webm;codecs=vp8,opus';
   const options = MediaRecorder.isTypeSupported(preferredType)
-    ? { mimeType: preferredType, videoBitsPerSecond: 3_000_000 }
-    : { videoBitsPerSecond: 3_000_000 };
+    ? { mimeType: preferredType, videoBitsPerSecond: profile.videoBitsPerSecond }
+    : { videoBitsPerSecond: profile.videoBitsPerSecond };
   canvasRecorder = new MediaRecorder(captureMediaStream, options);
   canvasRecorder.addEventListener('dataavailable', async ({ data }) => {
     if (!data.size) return;
@@ -2321,9 +2357,19 @@ elements.musicPlay.addEventListener('click', async () => {
 });
 elements.musicPause.addEventListener('click', () => { if (musicPlayer) pauseMusicPlayback(musicPlayer); });
 elements.liveSource.addEventListener('input', () => updateStatus(dashboardStatus));
+elements.streamProfile.addEventListener('change', () => {
+  streamProfileId = normaliseOutputProfile(elements.streamProfile.value);
+  localStorage.setItem('live-gamer-stream-profile', streamProfileId);
+  updateStreamProfilePresentation();
+  resize();
+  if (dashboardStatus.stream_configured && dashboardStatus.stream_profile !== streamProfileId) {
+    elements.streamNote.textContent = 'Qualidade alterada. Salve a configuração antes de iniciar a live.';
+  }
+});
 elements.start.addEventListener('click', async () => {
   const source = elements.liveSource.value.trim();
   if (!source) return toast('Informe o link da live para iniciar a transmissão.');
+  if (normaliseOutputProfile(dashboardStatus.stream_profile) !== streamProfileId) return toast('Salve a qualidade escolhida antes de iniciar a transmissão.');
   try {
     updateStatus(await api('/api/chat/connect', { method: 'POST', body: JSON.stringify({ source }) }));
     updateStatus(await api('/api/stream/start', { method: 'POST' }));
@@ -2332,7 +2378,18 @@ elements.start.addEventListener('click', async () => {
   } catch (error) { await stopCanvasCapture(); try { updateStatus(await api('/api/stream/stop', { method: 'POST' })); } catch {} toast(error.message); }
 });
 elements.stop.addEventListener('click', async () => { await stopCanvasCapture(); updateStatus(await api('/api/stream/stop', { method: 'POST' })); toast('Envio interrompido.'); });
-document.querySelector('#stream-form').addEventListener('submit', async (event) => { event.preventDefault(); const key = document.querySelector('#stream-key').value.trim(); if (!key) return toast('Informe a chave de transmissão.'); try { updateStatus(await api('/api/stream/configure', { method: 'POST', body: JSON.stringify({ stream_key: key }) })); toast('Chave salva somente nesta sessão local.'); } catch (error) { toast(error.message); } });
+document.querySelector('#stream-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const key = elements.streamKey.value.trim();
+  if (!key) return toast('Informe a chave de transmissão.');
+  try {
+    updateStatus(await api('/api/stream/configure', {
+      method: 'POST',
+      body: JSON.stringify({ stream_key: key, profile: streamProfileId }),
+    }));
+    toast(`Configuração ${streamProfileId === 'normal' ? 'normal' : 'econômica'} salva somente nesta sessão local.`);
+  } catch (error) { toast(error.message); }
+});
 elements.entryAnimation.addEventListener('change', () => {
   entryAnimationMode = normaliseEntryMode(elements.entryAnimation.value);
   localStorage.setItem('live-gamer-entry-animation', entryAnimationMode);
