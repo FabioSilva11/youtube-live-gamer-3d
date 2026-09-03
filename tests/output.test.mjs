@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   outputCameraPreset,
   outputDimensions,
+  pixOverlayLayout,
   previewFovForAspect,
   rankingOverlayLayout,
 } from '../app/static/output.js';
@@ -40,4 +41,15 @@ test('ranking stays fully inside the 1280x720 live frame safe area', () => {
   assert.ok(layout.y - layout.height / 2 >= 24);
   assert.ok(layout.x + layout.width / 2 <= 1280 - 24);
   assert.ok(layout.y + layout.height / 2 <= 720 - 24);
+});
+
+test('Pix donation QR stays smaller in the bottom-left without overlapping the ranking', () => {
+  const frame = outputDimensions();
+  const pix = pixOverlayLayout(frame.width, frame.height);
+  const ranking = rankingOverlayLayout(frame.width, frame.height);
+
+  assert.equal(pix.width, 220);
+  assert.equal(pix.x - pix.width / 2, 38);
+  assert.equal(pix.y - pix.height / 2, 34);
+  assert.ok(pix.x + pix.width / 2 < ranking.x - ranking.width / 2);
 });

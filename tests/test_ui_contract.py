@@ -95,6 +95,23 @@ class PublicChatUiContractTests(unittest.TestCase):
         self.assertIn("message.type === 'donation'", script)
         self.assertIn("SEM PERSONAGEM", html)
 
+    def test_optional_mercado_pago_pix_is_below_stream_configuration_and_drawn_in_capture(self):
+        html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        server = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+
+        self.assertLess(html.index('id="stream-key"'), html.index('id="mercado-pago-config"'))
+        self.assertIn('id="mercado-pago-token"', html)
+        self.assertIn('id="mercado-pago-amount"', html)
+        self.assertIn('id="mercado-pago-email"', html)
+        self.assertIn("OPCIONAL", html)
+        self.assertIn("/api/donations/mercado-pago/configure", script)
+        self.assertIn("/api/donations/mercado-pago/qr", script)
+        self.assertIn("pixDonationSprite", script)
+        self.assertIn("positionMercadoPagoQr", script)
+        self.assertIn("MercadoPagoDonationController", server)
+        self.assertNotIn("webhook", server.lower())
+
     def test_stream_output_is_fixed_to_pc_1280_by_720(self):
         html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
@@ -119,6 +136,8 @@ class PublicChatUiContractTests(unittest.TestCase):
         self.assertIn("stopCanvasCapture({ closeSocket: false })", script)
         self.assertIn("captureSessionIsActive", script)
         self.assertIn("captureAudio = { context, source, started: false }", script)
+        self.assertIn("const socket = outputSocket;", script)
+        self.assertIn("socket.readyState !== WebSocket.OPEN", script)
         self.assertNotIn("captureCamera.copy(camera)", script)
 
     def test_characters_walk_interact_and_advertise_the_ten_person_stage_limit(self):

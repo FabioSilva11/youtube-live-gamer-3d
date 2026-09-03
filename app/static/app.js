@@ -26,9 +26,10 @@ import { terrainHeightAt } from '/static/terrain.js';
 import {
   outputCameraPreset,
   outputDimensions,
+  pixOverlayLayout,
   previewFovForAspect,
   rankingOverlayLayout,
-} from '/static/output.js?v=floating-biome-3';
+} from '/static/output.js?v=mercado-pago-pix-4';
 import {
   avatarActivityAnimation,
   explorationTarget,
@@ -50,6 +51,12 @@ const elements = {
   onlineCopy: document.querySelector('#online-copy'), streamStatus: document.querySelector('#stream-status'),
   streamNote: document.querySelector('#stream-note'), liveSource: document.querySelector('#live-source'),
   rankingList: document.querySelector('#ranking-list'), rankingTotal: document.querySelector('#ranking-total'),
+  mercadoPagoState: document.querySelector('#mercado-pago-state'),
+  mercadoPagoNote: document.querySelector('#mercado-pago-note'),
+  mercadoPagoToken: document.querySelector('#mercado-pago-token'),
+  mercadoPagoAmount: document.querySelector('#mercado-pago-amount'),
+  mercadoPagoEmail: document.querySelector('#mercado-pago-email'),
+  disableMercadoPago: document.querySelector('#disable-mercado-pago'),
   entryAnimation: document.querySelector('#entry-animation'), exitAnimation: document.querySelector('#exit-animation'),
   start: document.querySelector('#start-stream'), stop: document.querySelector('#stop-stream'),
   toast: document.querySelector('#toast'),
@@ -126,6 +133,7 @@ function updateStatus(incomingStatus) {
   else if (!hasLiveSource) elements.streamNote.textContent = 'Informe o link da live para liberar o envio e conectar o chat.';
   else if (!status.stream_configured) elements.streamNote.textContent = 'Cole a chave do YouTube Studio para liberar o envio do canvas 3D.';
   else elements.streamNote.textContent = 'Tudo pronto: a área 3D acima será a imagem da live.';
+  updateMercadoPagoStatus(status);
   if (status.stream_error && status.stream_error !== lastPresentedStreamError) toast(status.stream_error);
   lastPresentedStreamError = status.stream_error || null;
   if (status.chat_error) toast(status.chat_error);
@@ -203,6 +211,104 @@ const rankingSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: rankingTe
 hudScene.add(rankingSprite);
 const rankingImages = new Map();
 let currentRankingPeople = [];
+const pixDonationCanvas = document.createElement('canvas');
+pixDonationCanvas.width = 640; pixDonationCanvas.height = 700;
+const pixDonationContext = pixDonationCanvas.getContext('2d');
+const pixDonationTexture = new THREE.CanvasTexture(pixDonationCanvas);
+pixDonationTexture.colorSpace = THREE.SRGBColorSpace;
+const pixDonationSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+  map: pixDonationTexture,
+  transparent: true,
+  depthTest: false,
+  depthWrite: false,
+}));
+pixDonationSprite.visible = false;
+hudScene.add(pixDonationSprite);
+let loadedPixChargeId = null;
+let loadingPixChargeId = null;
+
+function hideMercadoPagoQr() {
+  loadedPixChargeId = null;
+  loadingPixChargeId = null;
+  pixDonationSprite.visible = false;
+}
+
+function drawMercadoPagoQr(image, state) {
+  const context = pixDonationContext;
+  context.clearRect(0, 0, pixDonationCanvas.width, pixDonationCanvas.height);
+  const gradient = context.createLinearGradient(0, 0, 640, 700);
+  gradient.addColorStop(0, 'rgba(9, 66, 51, .97)');
+  gradient.addColorStop(1, 'rgba(18, 45, 37, .97)');
+  context.fillStyle = gradient;
+  context.beginPath(); context.roundRect(10, 10, 620, 680, 38); context.fill();
+  context.strokeStyle = '#79efd0'; context.lineWidth = 7; context.stroke();
+  context.fillStyle = '#82f2d2'; context.font = '700 31px DM Mono, monospace';
+  context.textAlign = 'center'; context.textBaseline = 'middle';
+  context.fillText('APOIE A LIVE VIA PIX', 320, 50);
+  context.fillStyle = '#ffffff';
+  context.beginPath(); context.roundRect(55, 82, 530, 530, 28); context.fill();
+  const qrSize = 470;
+  context.imageSmoothingEnabled = false;
+  context.drawImage(image, 85, 112, qrSize, qrSize);
+  context.imageSmoothingEnabled = true;
+  const formattedAmount = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: state.currency || 'BRL' }).format(Number(state.amount));
+  context.fillStyle = '#fff6ae'; context.font = '700 43px Outfit, Arial';
+  context.fillText(formattedAmount, 320, 635);
+  context.fillStyle = '#d8fff3'; context.font = '500 22px Outfit, Arial';
+  context.fillText('Escaneie com o aplicativo do seu banco', 320, 672);
+  pixDonationTexture.needsUpdate = true;
+  pixDonationSprite.visible = true;
+}
+
+async function refreshMercadoPagoQr(expectedChargeId) {
+  if (!expectedChargeId || loadingPixChargeId === expectedChargeId) return;
+  loadingPixChargeId = expectedChargeId;
+  try {
+    const state = await api('/api/donations/mercado-pago/qr');
+    if (!state.enabled || state.charge_id !== expectedChargeId || !state.qr_code_base64) return;
+    const image = new Image();
+    image.decoding = 'async';
+    await new Promise((resolve, reject) => {
+      image.addEventListener('load', resolve, { once: true });
+      image.addEventListener('error', reject, { once: true });
+      image.src = `data:image/png;base64,${state.qr_code_base64}`;
+    });
+    if (dashboardStatus.mercado_pago_charge_id !== expectedChargeId) return;
+    drawMercadoPagoQr(image, state);
+    loadedPixChargeId = expectedChargeId;
+  } catch {
+    if (dashboardStatus.mercado_pago_charge_id === expectedChargeId) {
+      elements.mercadoPagoNote.textContent = 'Não foi possível desenhar o QR agora; o painel tentará novamente.';
+    }
+  } finally {
+    if (loadingPixChargeId === expectedChargeId) loadingPixChargeId = null;
+  }
+}
+
+function updateMercadoPagoStatus(status) {
+  const configured = Boolean(status.mercado_pago_configured);
+  const hasQr = configured && Boolean(status.mercado_pago_has_qr);
+  elements.scene.classList.toggle('pix-active', hasQr);
+  elements.disableMercadoPago.disabled = !configured;
+  if (status.mercado_pago_error) {
+    elements.mercadoPagoState.textContent = 'ERRO';
+    elements.mercadoPagoNote.textContent = status.mercado_pago_error;
+  } else if (hasQr) {
+    elements.mercadoPagoState.textContent = 'ATIVO';
+    const amount = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(status.mercado_pago_amount));
+    elements.mercadoPagoNote.textContent = `${amount} • consulta a cada ${status.mercado_pago_poll_interval || 5}s • renovação automática.`;
+  } else if (configured) {
+    elements.mercadoPagoState.textContent = 'CRIANDO QR';
+    elements.mercadoPagoNote.textContent = 'Criando uma nova cobrança Pix no Mercado Pago.';
+  } else {
+    elements.mercadoPagoState.textContent = 'OPCIONAL';
+    elements.mercadoPagoNote.textContent = 'Opcional. O QR vale por 30 minutos e é renovado automaticamente.';
+  }
+  const chargeId = hasQr ? status.mercado_pago_charge_id : null;
+  if (!chargeId) hideMercadoPagoQr();
+  else if (loadedPixChargeId !== chargeId) void refreshMercadoPagoQr(chargeId);
+}
+
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.minDistance = 7;
@@ -1091,8 +1197,15 @@ function positionRanking(width, height) {
   rankingSprite.position.set(layout.x, layout.y, 0);
 }
 
+function positionMercadoPagoQr(width, height) {
+  const layout = pixOverlayLayout(width, height);
+  pixDonationSprite.scale.set(layout.width, layout.height, 1);
+  pixDonationSprite.position.set(layout.x, layout.y, 0);
+}
+
 function renderWorld(targetRenderer, targetCamera, targetHudCamera, width, height) {
   positionRanking(width, height);
+  positionMercadoPagoQr(width, height);
   targetRenderer.clear();
   targetRenderer.render(scene, targetCamera);
   targetRenderer.clearDepth();
@@ -1298,8 +1411,11 @@ async function startCanvasCapture() {
     : { videoBitsPerSecond: 3_000_000 };
   canvasRecorder = new MediaRecorder(captureMediaStream, options);
   canvasRecorder.addEventListener('dataavailable', async ({ data }) => {
-    if (!data.size || !outputSocket || outputSocket.readyState !== WebSocket.OPEN) return;
-    outputSocket.send(await data.arrayBuffer());
+    if (!data.size) return;
+    const buffer = await data.arrayBuffer();
+    const socket = outputSocket;
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    socket.send(buffer);
   });
   assertCaptureSession(generation, socket);
   canvasRecorder.start(500);
@@ -1338,6 +1454,28 @@ document.querySelector('#donation-form').addEventListener('submit', async (event
       body: JSON.stringify({ donor_name: donorName, amount, message: donationMessageField.value.trim() }),
     });
     toast('Alerta de doação enviado para o palco.');
+  } catch (error) { toast(error.message); }
+});
+document.querySelector('#mercado-pago-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const accessToken = elements.mercadoPagoToken.value.trim();
+  const amount = Number(elements.mercadoPagoAmount.value);
+  const payerEmail = elements.mercadoPagoEmail.value.trim();
+  if (!accessToken) return toast('Informe o Access Token do Mercado Pago.');
+  if (!Number.isFinite(amount) || amount <= 0) return toast('Informe um valor de doação válido.');
+  if (!elements.mercadoPagoEmail.checkValidity() || !payerEmail) return toast('Informe um e-mail válido para a cobrança Pix.');
+  try {
+    updateStatus(await api('/api/donations/mercado-pago/configure', {
+      method: 'POST',
+      body: JSON.stringify({ access_token: accessToken, amount, payer_email: payerEmail, expiration_minutes: 30 }),
+    }));
+    toast('QR Pix ativado. As aprovações serão consultadas automaticamente.');
+  } catch (error) { toast(error.message); }
+});
+elements.disableMercadoPago.addEventListener('click', async () => {
+  try {
+    updateStatus(await api('/api/donations/mercado-pago/disable', { method: 'POST' }));
+    toast('Doações via Pix desativadas.');
   } catch (error) { toast(error.message); }
 });
 document.querySelector('#clear-stage').addEventListener('click', async () => { await api('/api/participants/clear', { method: 'POST' }); updateParticipants([]); });
@@ -1397,5 +1535,5 @@ elements.exitAnimation.addEventListener('change', () => {
 });
 async function pollStreamStatus() { try { updateStatus(await api('/api/status')); } catch {} }
 async function initialise() { try { updateMusicControls(); updateParticipants(await api('/api/participants')); updateStatus(await api('/api/status')); } catch { toast('Servidor indisponível. Recarregue a página após iniciá-lo.'); } }
-function connectSocket() { const protocol = location.protocol === 'https:' ? 'wss' : 'ws'; const socket = new WebSocket(`${protocol}://${location.host}/ws`); socket.addEventListener('message', (event) => { const message = JSON.parse(event.data); if (message.type === 'participants') updateParticipants(message.data); if (message.type === 'status') updateStatus(message.data); if (message.type === 'donation') triggerDonationAlert(message.data); }); socket.addEventListener('close', () => setTimeout(connectSocket, 2500)); }
+function connectSocket() { const protocol = location.protocol === 'https:' ? 'wss' : 'ws'; const socket = new WebSocket(`${protocol}://${location.host}/ws`); socket.addEventListener('message', (event) => { const message = JSON.parse(event.data); if (message.type === 'participants') updateParticipants(message.data); if (message.type === 'status' || message.type === 'mercado_pago') updateStatus(message.data); if (message.type === 'donation') triggerDonationAlert(message.data); }); socket.addEventListener('close', () => setTimeout(connectSocket, 2500)); }
 initialise(); connectSocket(); setInterval(pollStreamStatus, 3000);

@@ -13,6 +13,7 @@ Painel local em **Python/FastAPI + Three.js** para uma live no YouTube: cada pes
 - Caminhada esquelética real dos GLBs, exploração da ilha e interações em pares: os personagens percorrem pontos variados do mapa, aproximam-se, preservam espaço pessoal, encaram-se e alternam gestos sociais.
 - Entradas configuráveis: apresentação individual, queda suave, portal giratório ou chegada direta. Saídas: caminhada, subida, portal ou desaparecimento imediato.
 - Ranking dos cinco autores mais ativos dentro do próprio canvas transmitido, com a foto pública do perfil quando disponível e a inicial como reserva.
+- Doações opcionais via Pix/Mercado Pago: QR dentro do quadro transmitido, consulta automática a cada 5 segundos e alerta 3D quando o pagamento é aprovado.
 - Leitura local do chat público a partir do link da live, sem chave de API, cookies ou login. O leitor usa a continuação pública do próprio chat e respeita o intervalo indicado pelo YouTube.
 - Modo de demonstração com botões separados para testar a entrada e a saída de um avatar sem limpar os demais.
 - Captura ao vivo do canvas Three.js via `canvas.captureStream()` + FFmpeg + RTMPS. A imagem transmitida é o próprio palco onde os avatares aparecem; não há arquivo de vídeo de origem.
@@ -72,10 +73,25 @@ Mantenha esta aba aberta durante a live: ela é o encoder da cena 3D. Os control
 
 Os campos permanecem preenchidos depois de enviar os formulários, para facilitar novos testes e ajustes na mesma sessão.
 
+## Receber doações via Pix com Mercado Pago
+
+Esta função é opcional e não interfere no início da live.
+
+1. Na opção **Live**, abra **Doações via Pix**, logo abaixo da chave de transmissão.
+2. Informe seu **Access Token** privado do Mercado Pago, o valor fixo de cada doação e um e-mail válido exigido para criar a cobrança.
+3. Clique em **Ativar QR Pix**. O QR aparece dentro do canvas 1280 × 720, abaixo do ranking, e também entra na captura enviada ao YouTube.
+4. O servidor consulta o estado do pagamento a cada 5 segundos, sem webhook. Quando a cobrança é aprovada, dispara a animação de doação já existente e gera um novo QR. Cobranças expiradas após 30 minutos também são renovadas.
+5. Para remover o QR durante a sessão, abra novamente a opção e clique em **Desativar**.
+
+O Access Token permanece somente na memória do servidor e nunca é retornado ao navegador. A interface recebe apenas o estado sanitizado e a imagem pública do QR. Credenciais atuais `APP_USR` usam a API de Orders recomendada; credenciais de teste antigas com prefixo `TEST-` usam automaticamente a compatibilidade da Payments API. Em produção, use o Access Token produtivo da sua própria conta e mantenha uma chave Pix cadastrada no Mercado Pago.
+
+Como o QR é público e não possui um formulário anterior ao pagamento, o alerta usa o nome retornado pelo Mercado Pago quando disponível; caso contrário, mostra **Apoiador via Pix**. O e-mail informado serve para a criação técnica da cobrança e não é exibido na live.
+
 ## Limites de segurança e privacidade
 
 - Não há lista de viewers silenciosos: isso não é um dado exposto pelo endpoint de chat.
 - O app não persiste participantes, mensagens, IPs, cookies, imagens de perfil nem chaves de API; tudo some quando o servidor é parado ou o palco é limpo.
+- O monitor do Mercado Pago não usa webhook: apenas o servidor local consulta a cobrança ativa, de cinco em cinco segundos.
 - Não publique esta interface em uma URL pública sem autenticação, HTTPS e uma revisão de segurança. Ela foi pensada para operar em `127.0.0.1`.
 - Se a chave de transmissão foi mostrada ou enviada a alguém, redefina-a no Live Control Room imediatamente.
 
@@ -91,4 +107,4 @@ python -m compileall -q app
 
 Os 18 personagens são do pacote **Blocky Characters**, de [Kenney](https://kenney.nl/), distribuído sob **CC0 1.0**. A licença original está em `kenney_blocky-characters_20/License.txt`.
 
-Referências: [embed de chat ao vivo do YouTube](https://support.google.com/youtube/answer/2474026) e [RTMPS no YouTube](https://support.google.com/youtube/answer/10364924).
+Referências: [Pix via Orders API do Mercado Pago](https://www.mercadopago.com.br/developers/pt/docs/checkout-api-orders/payment-integration/pix), [embed de chat ao vivo do YouTube](https://support.google.com/youtube/answer/2474026) e [RTMPS no YouTube](https://support.google.com/youtube/answer/10364924).

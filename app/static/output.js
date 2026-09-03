@@ -19,6 +19,17 @@ export function rankingOverlayLayout(frameWidth, frameHeight) {
   };
 }
 
+export function pixOverlayLayout(frameWidth, frameHeight) {
+  const width = Math.min(220, frameWidth * .22);
+  const height = width * 700 / 640;
+  return {
+    width,
+    height,
+    x: width / 2 + 38,
+    y: height / 2 + 34,
+  };
+}
+
 export function outputCameraPreset() {
   return {
     fov: 45,

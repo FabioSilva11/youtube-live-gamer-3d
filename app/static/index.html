@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#68b95a" />
     <title>Live Gamer 3D</title>
     <link rel="icon" type="image/png" href="/static/live-gamer-3d-icon.png" />
-    <link rel="stylesheet" href="/static/styles.css" />
+    <link rel="stylesheet" href="/static/styles.css?v=mercado-pago-pix-2" />
   </head>
   <body>
     <main class="shell">
@@ -46,6 +46,30 @@
             <label>Chave de transmissão <input id="stream-key" type="password" autocomplete="off" placeholder="Cole a chave do YouTube Studio" /></label>
             <button class="button secondary" type="submit">Salvar configuração local</button>
           </form>
+          <details id="mercado-pago-config" class="payment-config">
+            <summary>
+              <span>Doações via Pix</span>
+              <strong id="mercado-pago-state">OPCIONAL</strong>
+            </summary>
+            <form id="mercado-pago-form" class="payment-form">
+              <label>Access Token do Mercado Pago
+                <input id="mercado-pago-token" type="password" autocomplete="off" placeholder="APP_USR-..." />
+              </label>
+              <div class="payment-fields">
+                <label>Valor de cada Pix
+                  <input id="mercado-pago-amount" type="number" min="0.01" max="1000000" step="0.01" value="5.00" />
+                </label>
+                <label>E-mail da cobrança
+                  <input id="mercado-pago-email" type="email" autocomplete="email" placeholder="seu@email.com" />
+                </label>
+              </div>
+              <div class="button-row payment-actions">
+                <button id="enable-mercado-pago" class="button pix-button" type="submit">Ativar QR Pix</button>
+                <button id="disable-mercado-pago" class="button ghost" type="button" disabled>Desativar</button>
+              </div>
+            </form>
+            <p id="mercado-pago-note" class="payment-note">Opcional. O QR vale por 30 minutos e é renovado automaticamente.</p>
+          </details>
           <p class="output-help">Formato fixo para PC: 16:9 em 1280 × 720, com mapa e ranking completos.</p>
           <div class="button-row">
             <button id="start-stream" class="button primary">Iniciar transmissão</button>

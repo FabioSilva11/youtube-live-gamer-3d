@@ -29,6 +29,8 @@ from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from app.mercadopago import MercadoPagoDonationController
+
 
 def runtime_root(bundle_directory: str | None = None) -> Path:
     return Path(bundle_directory) if bundle_directory else Path(__file__).resolve().parents[1]
@@ -465,6 +467,11 @@ class StreamController:
         self._writer_stop: threading.Event | None = None
         self._writer: threading.Thread | None = None
         self._stderr_reader: threading.Thread | None = None
+        self._generation = 0
+
+    @property
+    def generation(self) -> int:
+        return self._generation
 
     def config(self) -> tuple[str, str]:
         return (
@@ -522,6 +529,7 @@ class StreamController:
         except OSError as error:
             self.last_error = "Não foi possível iniciar o FFmpeg."
             raise RuntimeError(self.last_error) from error
+        self._generation += 1
         self._canvas_chunks = CanvasChunkBuffer()
         self._writer_stop = threading.Event()
         self._writer = threading.Thread(target=self._forward_canvas_chunks, name="canvas-ffmpeg", daemon=True)
@@ -558,13 +566,18 @@ class StreamController:
                     self.last_error = "O FFmpeg parou de receber o canvas 3D."
                 return
 
-    def write_canvas_chunk(self, chunk: bytes) -> None:
+    def write_canvas_chunk(self, chunk: bytes, generation: int | None = None) -> None:
         """Queues a WebM chunk without blocking FastAPI's WebSocket event loop."""
+        if generation is not None and generation != self._generation:
+            raise RuntimeError("Esta conexão de vídeo pertence a uma transmissão encerrada.")
         if not chunk or self.process is None or self.process.poll() is not None or self._canvas_chunks is None:
             raise RuntimeError("O receptor de vídeo 3D não está ativo.")
         self._canvas_chunks.push(chunk)
 
-    def stop(self) -> None:
+    def stop(self, generation: int | None = None) -> bool:
+        if generation is not None and generation != self._generation:
+            return False
+        self._generation += 1
         if self._writer_stop:
             self._writer_stop.set()
         if self.process and self.process.poll() is None:
@@ -585,6 +598,7 @@ class StreamController:
         self._writer_stop = None
         self._writer = None
         self._stderr_reader = None
+        return True
 
 
 class CanvasChunkBuffer:
@@ -628,14 +642,27 @@ class StreamConfigRequest(BaseModel):
     endpoint: str | None = Field(default=None, max_length=250)
 
 
+class MercadoPagoConfigRequest(BaseModel):
+    access_token: str = Field(min_length=1, max_length=500)
+    amount: float = Field(gt=0, le=1_000_000)
+    payer_email: str = Field(min_length=3, max_length=254)
+    expiration_minutes: int = Field(default=30, ge=30, le=1440)
+
+
 registry = ParticipantRegistry()
 hub = SocketHub()
 chat_worker = PublicChatWorker(registry, hub)
 stream = StreamController()
+mercado_pago = MercadoPagoDonationController(hub.broadcast, poll_interval=5)
 
 
 def dashboard_status() -> dict[str, Any]:
-    return {**chat_worker.status(), **stream.status(), "participants": len(registry.snapshot())}
+    return {
+        **chat_worker.status(),
+        **stream.status(),
+        **mercado_pago.status(),
+        "participants": len(registry.snapshot()),
+    }
 
 
 @asynccontextmanager
@@ -643,10 +670,23 @@ async def lifespan(_: FastAPI):
     live_url = os.getenv("YOUTUBE_LIVE_URL", "").strip()
     if live_url:
         await chat_worker.start(live_url)
+    mercado_pago_token = os.getenv("MERCADO_PAGO_ACCESS_TOKEN", "").strip()
+    if mercado_pago_token:
+        try:
+            await mercado_pago.configure(
+                mercado_pago_token,
+                os.getenv("MERCADO_PAGO_DONATION_AMOUNT", "5.00"),
+                os.getenv("MERCADO_PAGO_PAYER_EMAIL", ""),
+                int(os.getenv("MERCADO_PAGO_EXPIRATION_MINUTES", "30")),
+            )
+        except (RuntimeError, ValueError):
+            # Donation setup is optional; the live remains usable when it fails.
+            pass
     try:
         yield
     finally:
         await chat_worker.stop()
+        await mercado_pago.stop()
         stream.stop()
 
 
@@ -744,6 +784,37 @@ async def send_donation_alert(body: DonationAlertRequest) -> dict[str, Any]:
     return {"ok": True, "donation": donation}
 
 
+@app.post("/api/donations/mercado-pago/configure")
+async def configure_mercado_pago(body: MercadoPagoConfigRequest) -> dict[str, Any]:
+    """Creates the first Pix order and starts five-second status polling."""
+    try:
+        await mercado_pago.configure(
+            body.access_token,
+            body.amount,
+            body.payer_email,
+            body.expiration_minutes,
+        )
+    except (RuntimeError, ValueError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    status = dashboard_status()
+    await hub.broadcast({"type": "mercado_pago", "data": mercado_pago.status()})
+    return status
+
+
+@app.get("/api/donations/mercado-pago/qr")
+async def get_mercado_pago_qr() -> dict[str, Any]:
+    """Returns only the public QR image, never the private Access Token."""
+    return mercado_pago.public_qr()
+
+
+@app.post("/api/donations/mercado-pago/disable")
+async def disable_mercado_pago() -> dict[str, Any]:
+    await mercado_pago.stop()
+    status = dashboard_status()
+    await hub.broadcast({"type": "mercado_pago", "data": mercado_pago.status()})
+    return status
+
+
 @app.post("/api/participants/clear")
 async def clear_participants() -> dict[str, Any]:
     registry.clear()
@@ -781,17 +852,20 @@ async def stop_stream() -> dict[str, Any]:
 async def canvas_output(socket: WebSocket) -> None:
     """Receives the live WebM capture of renderer.domElement from this local browser."""
     await socket.accept()
+    generation = stream.generation
     try:
         while True:
             try:
-                stream.write_canvas_chunk(await socket.receive_bytes())
+                stream.write_canvas_chunk(await socket.receive_bytes(), generation)
             except RuntimeError:
                 await socket.close(code=1011)
                 return
     except WebSocketDisconnect:
-        # A disconnected local renderer must not leave an empty FFmpeg relay running.
-        stream.stop()
-        await hub.broadcast({"type": "status", "data": dashboard_status()})
+        pass
+    finally:
+        # Only the socket that belongs to the current capture may stop its FFmpeg relay.
+        if stream.stop(generation):
+            await hub.broadcast({"type": "status", "data": dashboard_status()})
 
 
 @app.websocket("/ws")

@@ -166,6 +166,15 @@ class ParticipantRegistryTests(unittest.TestCase):
         self.assertEqual(buffer.next_chunk(timeout=0), b"current")
         self.assertEqual(buffer.next_chunk(timeout=0), b"latest")
 
+    def test_stale_output_socket_cannot_stop_a_newer_stream_generation(self):
+        controller = StreamController()
+        controller._generation = 4
+
+        self.assertFalse(controller.stop(generation=3))
+        self.assertEqual(controller.generation, 4)
+        self.assertTrue(controller.stop(generation=4))
+        self.assertEqual(controller.generation, 5)
+
     def test_ffmpeg_delivery_errors_are_friendly_and_do_not_leak_stream_keys(self):
         secret = "private-stream-key"
         message = f"Connection to rtmps://a.rtmps.youtube.com/live2/{secret} failed: Connection refused"
