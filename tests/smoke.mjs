@@ -1,0 +1,23 @@
+import assert from 'node:assert/strict';
+const base=process.env.TEST_ORIGIN||'http://localhost:3000';
+const password='TestOnly!'+crypto.randomUUID();
+async function request(path,body,cookie){const response=await fetch(base+path,{method:body?'POST':'GET',headers:{...(body?{'content-type':'application/json',origin:base}:{}),...(cookie?{cookie}:{})},body:body?JSON.stringify(body):undefined,signal:AbortSignal.timeout(45000)});const text=await response.text();let data;try{data=JSON.parse(text)}catch{data=text;}return {status:response.status,data,cookie:response.headers.get('set-cookie')?.split(';')[0]};}
+assert.equal((await request('/api/studio')).status,401);
+assert.equal((await request('/api/stage?token=invalid')).status,404);
+const email='qa-'+Date.now()+'@example.test';
+const a=await request('/api/auth/register',{name:'Estúdio de teste',email,password});assert.equal(a.status,200,JSON.stringify(a.data));assert(a.cookie);console.log('PASS cadastro + sessão segura');
+const profile=(await request('/api/studio',undefined,a.cookie)).data;assert(profile.profile.overlay_token);assert(!JSON.stringify(profile).includes('password_hash'));
+const config={action:'save',display_name:'Live QA',channel_url:'https://www.youtube.com/@SKETCHWARE_IA',live_source:'https://www.youtube.com/watch?v=xJ0xQj9RPtA',quality:'normal',entry_animation:'spotlight',exit_animation:'walk',title:'Configuração original'};
+const saved=await request('/api/studio',config,a.cookie);assert.equal(saved.status,200,JSON.stringify(saved.data));assert.equal(saved.data.history.length,1);const id=saved.data.history[0].id;
+const changed=await request('/api/studio',{...config,title:'Segunda live',quality:'economy'},a.cookie);assert.equal(changed.data.history.length,2);assert.equal(changed.data.profile.quality,'economy');
+const restored=await request('/api/studio',{action:'restore',id},a.cookie);assert.equal(restored.data.profile.quality,'normal');assert.equal(restored.data.stage.active,false);console.log('PASS histórico independente e restauração');
+const b=await request('/api/auth/register',{name:'Outra conta QA',email:'second-'+Date.now()+'@example.test',password});assert.equal(b.status,200);
+const forbidden=await request('/api/studio',{action:'restore',id},b.cookie);assert.equal(forbidden.status,422);const isolated=(await request('/api/studio',undefined,b.cookie)).data;assert.equal(isolated.history.length,0);console.log('PASS isolamento de contas');
+const demo=await request('/api/studio',{action:'demo'},a.cookie);assert.equal(demo.data.stage.participants.length,5);
+const qr=await request('/api/studio',{action:'demo_qr'},a.cookie);assert.equal(qr.data.stage.pix.demo,true);assert(qr.data.stage.pix.qr_code_base64.length>100);
+const publicState=(await request('/api/stage?token='+profile.profile.overlay_token)).data;assert.equal(publicState.participants.length,5);assert(!JSON.stringify(publicState).includes('overlay_token'));assert(!JSON.stringify(publicState).includes('mp_secret'));console.log('PASS palco público restrito, avatares e QR de demonstração');
+const logout=await request('/api/auth/logout',{},b.cookie);assert.equal(logout.status,200);assert.equal((await request('/api/studio',undefined,b.cookie)).status,401);
+const login=await request('/api/auth/login',{email,password});assert.equal(login.status,200);const wrong=await request('/api/auth/login',{email,password:'not-the-password'});assert.equal(wrong.status,401);console.log('PASS login, rejeição de senha incorreta e logout');
+const connected=await request('/api/studio',{action:'connect'},a.cookie);assert.equal(connected.status,200);console.log('CHAT',JSON.stringify({active:connected.data.stage.active,error:connected.data.stage.error,participants:connected.data.stage.participants.length}));
+await request('/api/studio',{action:'disconnect'},a.cookie);
+console.log('All smoke assertions passed. Test accounts are isolated; no broadcast or payment was made.');

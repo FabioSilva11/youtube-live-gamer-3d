@@ -1,0 +1,1 @@
+ALTER TABLE `profiles` ADD `orientation` text DEFAULT 'landscape' NOT NULL;

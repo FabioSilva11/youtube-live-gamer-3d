@@ -1,0 +1,1 @@
+ALTER TABLE `profiles` ADD `biome` text DEFAULT 'fantasy' NOT NULL;

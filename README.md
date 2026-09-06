@@ -1,96 +1,49 @@
-# Live Gamer 3D
+# Live Gamer 3D — plataforma web
 
-Painel local em **Python/FastAPI + Three.js** para uma live no YouTube: cada pessoa que envia uma mensagem ao chat ao vivo aparece como um pequeno avatar 3D identificado pelo seu **nome público**.
+Página de apresentação estática, cadastro e login por e-mail/senha, estúdio individual, histórico reutilizável e palco 3D para fonte Navegador do OBS.
 
-![Prévia do Live Gamer 3D](assets/live-gamer-3d-thumbnail.png)
+## Biomas independentes
 
-> O YouTube não disponibiliza pela API de Live Chat a lista de espectadores que só assistem. Por isso este projeto não tenta identificar, rastrear ou armazenar visitantes silenciosos, IPs, mensagens ou dados privados. Ele trabalha apenas com autores públicos que efetivamente participam do chat.
+Após entrar, **/dashboard** apresenta a Área do Criador e sua galeria de biomas. Cada card abre diretamente o estúdio do mundo em **/studio/fantasy** ou **/studio/minecraft**. A rota mantém o bioma como fonte de verdade, inclusive após atualizar a página; um identificador inválido volta para a biblioteca. O endereço antigo **/estudio** também retorna para a biblioteca, enquanto **/studio** recupera o último bioma válido salvo na conta. **/perfil** permite editar nome e identidade do canal e **/configuracoes** reúne os dados da conta. Todas essas páginas exigem sessão.
 
-## O que está pronto
+O Dashboard e o Estúdio usam layouts independentes. O menu administrativo contém Meus biomas, Meu perfil e Configurações; dentro do Estúdio, o mundo Three.js ocupa a viewport disponível e as ferramentas ficam em um inspector recolhível. Em **Estúdio → Cena**, escolha **Horizontal (16:9)** ou **Vertical (9:16)** e salve. A orientação define a saída OBS e sua moldura de referência, sem limitar o tamanho do editor. A câmera vertical recua, o ranking mostra somente os três primeiros e o Pix ocupa um canto compacto. Contas e configurações antigas usam Fantasia e horizontal.
 
-- Palco Three.js responsivo em um mundo de primavera com relevo suave, lago animado, nuvens, caminho, pedras, arbustos, flores coloridas e árvores amareladas. Ele usa 18 modelos 3D CC0 do pacote Kenney já presente neste computador e mantém um avatar geométrico de reserva.
-- Atualização em tempo real por WebSocket; um autor tem um só avatar, mesmo mandando várias mensagens.
-- Caminhada esquelética real dos GLBs, exploração da ilha e interações em pares: os personagens percorrem pontos variados do mapa, aproximam-se, preservam espaço pessoal, encaram-se e alternam gestos sociais.
-- Entradas configuráveis: apresentação individual, queda suave, portal giratório ou chegada direta. Saídas: caminhada, subida, portal ou desaparecimento imediato.
-- Ranking dos cinco autores mais ativos dentro do próprio canvas transmitido, com a foto pública do perfil quando disponível e a inicial como reserva.
-- Doações opcionais via Pix/Mercado Pago: QR dentro do quadro transmitido, consulta automática a cada 5 segundos e alerta 3D quando o pagamento é aprovado.
-- Leitura local do chat público a partir do link da live, sem chave de API, cookies ou login. O leitor usa a continuação pública do próprio chat e respeita o intervalo indicado pelo YouTube.
-- Modo de demonstração com botões separados para testar a entrada e a saída de um avatar sem limpar os demais.
-- Captura ao vivo do canvas Three.js via `canvas.captureStream()` + FFmpeg + RTMPS. A imagem transmitida é o próprio palco onde os avatares aparecem; não há arquivo de vídeo de origem.
-- Dois perfis 16:9 selecionáveis: **Econômico (854 × 480, 24 FPS, ~1,4 Mb/s)** e **Normal (1280 × 720, 30 FPS, ~3 Mb/s)**. Durante a live, a prévia usa o mesmo canvas enviado ao YouTube para evitar uma segunda renderização e mostrar o enquadramento exato da transmissão.
-- Monitor de entrega que informa no painel quando o FFmpeg ou a conexão com o YouTube apresentam erro.
+O palco usa módulos ES em `public/static/biomes/`, mantendo a estrutura de distribuição existente. `fantasy/FantasyBiome.js` contém a ilha original e sua animação ambiental. `minecraft/` contém o mundo voxel, catálogo de blocos, personagens cúbicos, navegação e construção. `shared/` contém a identidade dos participantes, os efeitos Pix e a entrada/saída. Só o bioma ativo atualiza sua simulação; trocar de ambiente conserva a construção em memória. Recarregar o palco reinicia a simulação, e cada instância do OBS/prévia tem seu próprio andamento.
 
-## Requisitos
+Até 10 participantes se distribuem inicialmente em equipes de até quatro. Quem termina ajuda nos outros canteiros, podendo reunir todos na última obra. Os personagens montam os andaimes, constroem por camadas e caminham em uma grade com obstáculos. Uma barreira global espera todas as obras da rodada ficarem prontas antes da interação e da desmontagem, feita em um canteiro por vez. Os andaimes também são removidos bloco por bloco; só depois todos iniciam a próxima rodada. Reservas evitam duplicação e saídas liberam as tarefas. A desmontagem preserva o caminho de descida.
 
-- Python 3.11 ou superior.
-- FFmpeg instalado e disponível no `PATH` para transmitir ao YouTube.
-- Navegador com WebGL, `canvas.captureStream()` e `MediaRecorder`.
+Os blueprints editáveis ficam em `public/static/biomes/minecraft/structures/*.json`: `{id, name, version, blocks: [{x, y, z, type}]}`. As coordenadas são inteiras e locais; o gerenciador soma a origem do canteiro. Uma unidade equivale a 0,7 unidade Three.js. Os modelos iniciais ocupam 5 × 5 blocos e até 8 camadas. Modelos maiores exigem rever os canteiros e os acessos de trabalho. Não há geração aleatória de estruturas nem dependência de assets do Minecraft.
 
-## Aplicativo Windows
+Valide a simulação com `node --test tests/voxel.test.mjs tests/voxel-round.test.mjs tests/orientation.test.mjs` e a integração com `node tests/dashboard-api.mjs` (servidor local ativo e migrações até `0004` aplicadas). Os testes cobrem caminhada, equipes de 1/5/10 personagens, rodadas com 3/5/10 canteiros, andaimes, reservas, saída, orientação, perfil e histórico. A biblioteca inicial inclui grass, dirt, stone, wood, oak_planks/planks, glass, leaves, water, sand, brick e cobblestone.
 
-Depois de instalar as dependências, execute `python -m app.desktop` para abrir o painel como um programa: uma janela própria exibe a interface Three.js, sem precisar abrir o navegador manualmente. Ao fechar a janela, o serviço local também é encerrado.
+## Desenvolvimento
 
-O aplicativo usa o Microsoft Edge WebView2 instalado no Windows. Se a janela não abrir em um computador, instale o [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/).
+Node.js 22.13+ e npm. Instale com `npm ci`. Use `npm run dev` e abra http://localhost:3000.
 
-## Rodar localmente
+O backend JavaScript/TypeScript é executado no ambiente Workers do Sites. A aplicação não roda FFmpeg na hospedagem: o OBS no computador do criador transmite para o YouTube.
 
-No PowerShell, dentro desta pasta:
+## Dados e segurança
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-Copy-Item .env.example .env
-uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
-```
+D1 guarda contas, sessões com token hash, configurações e estados de polling. Senhas usam bcrypt (custo 12). Cookies são HttpOnly/SameSite=Lax e Secure em HTTPS. Consultas são parametrizadas e vinculadas ao dono da conta. O link aleatório do palco permite apenas sua visualização; trate-o como um link privado compartilhável.
 
-Abra [http://127.0.0.1:8000](http://127.0.0.1:8000). Sem configurar nada, use **Teste visual** para adicionar participantes fictícios.
+`APP_ENCRYPTION_KEY` deve ser um segredo base64 de 32 bytes configurado no Sites. Não rotacione sem migrar os tokens Mercado Pago já criptografados. Nunca coloque credenciais no código ou no link OBS.
 
-## Ligar o chat real
+O histórico salva cada configuração sem sobrescrever versões anteriores. Guarda nome, canal, live, qualidade e animações; não copia credenciais, cobranças ou participantes. Restaurar não conecta o chat automaticamente. A interface mostra as 100 versões mais recentes.
 
-1. Cole no painel o link público da live, por exemplo `https://www.youtube.com/live/mlKXjGTENNw`.
-2. Opcionalmente, defina `YOUTUBE_LIVE_URL` no `.env` para conectar esse chat na inicialização.
-3. Quando alguém escrever no chat público, o nome de exibição, a foto pública e o papel público (criador, moderador, membro ou participante) aparecerão no palco. A mensagem em si é descartada imediatamente.
-4. O palco mantém até 10 participantes que já escreveram no chat. Depois disso, cada novo autor substitui somente o autor há mais tempo sem interagir, usando a animação de saída escolhida no painel. Nenhum participante removido é mantido no cache do navegador.
+## Banco e publicação
 
-O leitor não acessa uma conta, não usa cookies e não consegue ler chat privado, bloqueado ou indisponível publicamente. Como a estrutura pública do YouTube pode mudar, o painel mostra um erro claro caso a leitura deixe de estar disponível.
+As migrações ficam em `drizzle/`. Após `npm run build`, no desenvolvimento aplique cada SQL novo com `npx wrangler d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/ARQUIVO.sql`. O empacotamento Sites inclui as migrações para produção. Não publique `.wrangler`, bancos locais ou arquivos `.env`.
 
-## Enviar o palco 3D para o YouTube
+## Testes
 
-1. Instale o [FFmpeg](https://ffmpeg.org/download.html) e deixe `ffmpeg` no `PATH`.
-2. No YouTube Live Control Room, copie a URL **RTMPS** e gere/copIe uma chave de transmissão. Trate essa chave como senha: se vazar, redefina-a no YouTube Studio.
-3. No `.env`, preencha `YOUTUBE_RTMPS_URL` e `YOUTUBE_STREAM_KEY`, ou cole somente a chave no formulário **Transmissão**. Nesse segundo caso, ela fica somente na memória do servidor e se perde quando ele é fechado.
-4. Com o painel aberto, clique em **Iniciar transmissão**. O navegador captura em tempo real apenas o canvas Three.js do palco, envia os quadros ao servidor local e o FFmpeg os retransmite por RTMPS. Confirme a prévia no YouTube Studio antes de clicar em “Transmitir ao vivo”.
-5. Escolha **Econômico** para upload limitado ou **Normal** para melhor definição. O ranking e o QR são compactos, renderizados em alta resolução e posicionados dentro da área segura do quadro.
+`npx tsc --noEmit`; `node tests/pix.test.mjs`; `node tests/smoke.mjs` com servidor local ativo. Smoke cria contas QA isoladas e testa sessão, histórico, isolamento, demonstração e a tentativa de leitura do chat público. Não realiza pagamentos nem transmite vídeo. `TEST_ORIGIN` permite testar a publicação.
 
-Mantenha esta aba aberta durante a live: ela é o encoder da cena 3D. Os controles e o painel lateral não entram na imagem transmitida.
+O leitor de chat público não usa chave oficial do YouTube e depende do HTML/API interna: poderá falhar se o YouTube alterar o formato, desativar o chat ou restringir acesso do datacenter. Não contorna login ou restrições. Somente autores públicos são exibidos; não são identificados espectadores silenciosos nem armazenadas mensagens completas.
 
-Os campos permanecem preenchidos depois de enviar os formulários, para facilitar novos testes e ajustes na mesma sessão.
+O QR demonstração é não pagável. O Pix real exige credenciais válidas da conta do criador e homologação com uma cobrança real. Consulte a [documentação oficial Pix/Orders](https://www.mercadopago.com.br/developers/pt/docs/checkout-api-orders/payment-integration/pix). Polling e renovação acontecem enquanto estúdio ou palco estiver aberto, não em segundo plano sem espectadores. Recuperação de senha e verificação de e-mail ainda não estão implementadas.
 
-## Receber doações via Pix com Mercado Pago
+## OBS
 
-Esta função é opcional e não interfere no início da live.
+No estúdio copie o link, adicione fonte **Navegador**, largura 1280 e altura 720, 30 FPS (ou perfil econômico 854×480/24 FPS). Use Testes para avatares, alerta e QR não pagável. Iniciar transmissão é uma ação separada no OBS.
 
-1. Na opção **Live**, abra **Doações via Pix**, logo abaixo da chave de transmissão.
-2. Informe seu **Access Token** privado do Mercado Pago, o valor fixo de cada doação e um e-mail válido exigido para criar a cobrança.
-3. Clique em **Ativar QR Pix**. O QR aparece de forma compacta no canto inferior do canvas e também entra na captura enviada ao YouTube.
-4. O servidor consulta o estado do pagamento a cada 5 segundos, sem webhook. Quando a cobrança é aprovada, dispara a animação de doação já existente e gera um novo QR. Cobranças expiradas após 30 minutos também são renovadas.
-5. Para remover o QR durante a sessão, abra novamente a opção e clique em **Desativar**.
-
-O Access Token permanece somente na memória do servidor e nunca é retornado ao navegador. A interface recebe apenas o estado sanitizado e a imagem pública do QR. Credenciais atuais `APP_USR` usam a API de Orders recomendada; credenciais de teste antigas com prefixo `TEST-` usam automaticamente a compatibilidade da Payments API. Em produção, use o Access Token produtivo da sua própria conta e mantenha uma chave Pix cadastrada no Mercado Pago.
-
-Como o QR é público e não possui um formulário anterior ao pagamento, o alerta usa o nome retornado pelo Mercado Pago quando disponível; caso contrário, mostra **Apoiador via Pix**. O e-mail informado serve para a criação técnica da cobrança e não é exibido na live.
-
-## Limites de segurança e privacidade
-
-- Não há lista de viewers silenciosos: isso não é um dado exposto pelo endpoint de chat.
-- O app não persiste participantes, mensagens, IPs, cookies, imagens de perfil nem chaves de API; tudo some quando o servidor é parado ou o palco é limpo.
-- O monitor do Mercado Pago não usa webhook: apenas o servidor local consulta a cobrança ativa, de cinco em cinco segundos.
-- Não publique esta interface em uma URL pública sem autenticação, HTTPS e uma revisão de segurança. Ela foi pensada para operar em `127.0.0.1`.
-- Se a chave de transmissão foi mostrada ou enviada a alguém, redefina-a no Live Control Room imediatamente.
-
-## Recursos de terceiros
-
-Os 18 personagens são do pacote **Blocky Characters**, de [Kenney](https://kenney.nl/), distribuído sob **CC0 1.0**. A licença original está em `kenney_blocky-characters_20/License.txt`.
-
-Referências: [Pix via Orders API do Mercado Pago](https://www.mercadopago.com.br/developers/pt/docs/checkout-api-orders/payment-integration/pix), [embed de chat ao vivo do YouTube](https://support.google.com/youtube/answer/2474026) e [RTMPS no YouTube](https://support.google.com/youtube/answer/10364924).
+As imagens da página de vendas e da galeria são capturas reais dos biomas Three.js. `minecraft-real.png` registra uma rodada construída pela própria IA; `fantasy-real.png` registra a ilha original. O palco usa vegetação instanciada, vento e shaders de água animados. Personagens Kenney sob CC0; licenças acompanham os assets.

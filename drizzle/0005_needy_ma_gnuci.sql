@@ -1,0 +1,1 @@
+ALTER TABLE `profiles` ADD `scene_composition` text DEFAULT '{}' NOT NULL;
